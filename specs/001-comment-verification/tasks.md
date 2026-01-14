@@ -19,14 +19,14 @@
 
 **Purpose**: Project initialization and TypeScript/Node.js structure
 
-- [ ] T001 Initialize Node.js project with package.json in project root
-- [ ] T002 Configure TypeScript with tsconfig.json for Node.js 18+ target
-- [ ] T003 [P] Install core dependencies: playwright, googleapis, @google/generative-ai, tesseract.js
-- [ ] T004 [P] Install CLI dependencies: commander, inquirer, cli-progress, chalk, dotenv
-- [ ] T005 [P] Install dev dependencies: typescript, vitest, @types/node, tsx
-- [ ] T006 [P] Create .env.example with GEMINI_API_KEY and GOOGLE_SERVICE_ACCOUNT_PATH
-- [ ] T007 [P] Create .gitignore excluding node_modules, .env, service-account.json, dist/
-- [ ] T008 Create src/ directory structure per plan.md architecture
+- [X] T001 Initialize Node.js project with package.json in project root
+- [X] T002 Configure TypeScript with tsconfig.json for Node.js 18+ target
+- [X] T003 [P] Install core dependencies: playwright, googleapis, @google/generative-ai, tesseract.js
+- [X] T004 [P] Install CLI dependencies: commander, inquirer, cli-progress, chalk, dotenv
+- [X] T005 [P] Install dev dependencies: typescript, vitest, @types/node, tsx
+- [X] T006 [P] Create .env.example with GEMINI_API_KEY and GOOGLE_SERVICE_ACCOUNT_PATH
+- [X] T007 [P] Create .gitignore excluding node_modules, .env, service-account.json, dist/
+- [X] T008 Create src/ directory structure per plan.md architecture
 
 ---
 
@@ -36,14 +36,14 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T009 [P] Create TypeScript interfaces in src/types/index.ts based on contracts/services.ts
-- [ ] T010 [P] Implement text normalization utility in src/utils/text-matcher.ts with normalize() and contains() methods
-- [ ] T011 [P] Implement Vietnamese diacritics handling in src/utils/vietnamese.ts
-- [ ] T012 [P] Implement retry utility with exponential backoff in src/utils/retry.ts
-- [ ] T013 [P] Implement logger utility in src/utils/logger.ts with verbose mode support
-- [ ] T014 [P] Implement config persistence in src/utils/config.ts for .ynam-tools.json
-- [ ] T015 Create base command interface in src/commands/base-command.ts
-- [ ] T016 Create CLI entry point in src/index.ts with Commander setup and verify command routing
+- [X] T009 [P] Create TypeScript interfaces in src/types/index.ts based on contracts/services.ts
+- [X] T010 [P] Implement text normalization utility in src/utils/text-matcher.ts with normalize() and contains() methods
+- [X] T011 [P] Implement Vietnamese diacritics handling in src/utils/vietnamese.ts
+- [X] T012 [P] Implement retry utility with exponential backoff in src/utils/retry.ts
+- [X] T013 [P] Implement logger utility in src/utils/logger.ts with verbose mode support
+- [X] T014 [P] Implement config persistence in src/utils/config.ts for .ynam-tools.json
+- [X] T015 Create base command interface in src/commands/base-command.ts
+- [X] T016 Create CLI entry point in src/index.ts with Commander setup and verify command routing
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -57,21 +57,21 @@
 
 ### Implementation for User Story 1
 
-- [ ] T017 [P] [US1] Implement SheetService.initialize() for service account auth in src/services/sheet-service.ts
-- [ ] T018 [P] [US1] Implement SheetService.parseSheetId() to extract sheet ID from URL in src/services/sheet-service.ts
-- [ ] T019 [US1] Implement SheetService.getPreview() to fetch headers and sample rows in src/services/sheet-service.ts
-- [ ] T020 [US1] Implement SheetService.readRecords() to read comment records in src/services/sheet-service.ts
-- [ ] T021 [US1] Implement SheetService.writeResult() and batchWriteResults() in src/services/sheet-service.ts
-- [ ] T022 [P] [US1] Implement BrowserService.connect() for CDP connection in src/services/browser-service.ts
-- [ ] T023 [P] [US1] Implement BrowserService.isConnected() and disconnect() in src/services/browser-service.ts
-- [ ] T024 [US1] Implement BrowserService.getPageText() to navigate and extract text in src/services/browser-service.ts
-- [ ] T025 [US1] Create interactive prompts for sheet URL and column selection in src/commands/verify.ts
-- [ ] T026 [US1] Implement link verification logic using BrowserService and text-matcher in src/commands/verify.ts
-- [ ] T027 [US1] Implement progress bar display with cli-progress in src/commands/verify.ts
-- [ ] T028 [US1] Implement summary output showing pass/fail counts in src/commands/verify.ts
-- [ ] T029 [US1] Add verbose mode with per-row status output in src/commands/verify.ts
-- [ ] T030 [US1] Add --rows flag support for row range filtering in src/commands/verify.ts
-- [ ] T031 [US1] Add --concurrency flag support for parallel processing in src/commands/verify.ts
+- [X] T017 [P] [US1] Implement SheetService.initialize() for service account auth in src/services/sheet-service.ts
+- [X] T018 [P] [US1] Implement SheetService.parseSheetId() to extract sheet ID from URL in src/services/sheet-service.ts
+- [X] T019 [US1] Implement SheetService.getPreview() to fetch headers and sample rows in src/services/sheet-service.ts
+- [X] T020 [US1] Implement SheetService.readRecords() to read comment records in src/services/sheet-service.ts
+- [X] T021 [US1] Implement SheetService.writeResult() and batchWriteResults() in src/services/sheet-service.ts
+- [X] T022 [P] [US1] Implement BrowserService.connect() for CDP connection in src/services/browser-service.ts
+- [X] T023 [P] [US1] Implement BrowserService.isConnected() and disconnect() in src/services/browser-service.ts
+- [X] T024 [US1] Implement BrowserService.getPageText() to navigate and extract text in src/services/browser-service.ts
+- [X] T025 [US1] Create interactive prompts for sheet URL and column selection in src/commands/verify.ts
+- [X] T026 [US1] Implement link verification logic using BrowserService and text-matcher in src/commands/verify.ts
+- [X] T027 [US1] Implement progress bar display with cli-progress in src/commands/verify.ts
+- [X] T028 [US1] Implement summary output showing pass/fail counts in src/commands/verify.ts
+- [X] T029 [US1] Add verbose mode with per-row status output in src/commands/verify.ts
+- [X] T030 [US1] Add --rows flag support for row range filtering in src/commands/verify.ts
+- [X] T031 [US1] Add --concurrency flag support for parallel processing in src/commands/verify.ts
 
 **Checkpoint**: User Story 1 complete - interactive link verification functional
 
@@ -85,15 +85,15 @@
 
 ### Implementation for User Story 2
 
-- [ ] T032 [P] [US2] Implement OCRService.extractText() with Tesseract.js in src/services/ocr-service.ts
-- [ ] T033 [P] [US2] Implement OCRService.isReady() and terminate() in src/services/ocr-service.ts
-- [ ] T034 [P] [US2] Implement AIService.initialize() with Gemini API key in src/services/ai-service.ts
-- [ ] T035 [P] [US2] Implement AIService.isConfigured() in src/services/ai-service.ts
-- [ ] T036 [US2] Implement AIService.verifyImageContainsText() with vision prompt in src/services/ai-service.ts
-- [ ] T037 [US2] Implement image download utility for screenshot URLs in src/utils/image.ts
-- [ ] T038 [US2] Implement screenshot verification logic with OCR primary and AI fallback in src/commands/verify.ts
-- [ ] T039 [US2] Add 80% confidence threshold for OCR fallback decision in src/commands/verify.ts
-- [ ] T040 [US2] Add ERROR result handling for failed screenshot downloads in src/commands/verify.ts
+- [X] T032 [P] [US2] Implement OCRService.extractText() with Tesseract.js in src/services/ocr-service.ts
+- [X] T033 [P] [US2] Implement OCRService.isReady() and terminate() in src/services/ocr-service.ts
+- [X] T034 [P] [US2] Implement AIService.initialize() with Gemini API key in src/services/ai-service.ts
+- [X] T035 [P] [US2] Implement AIService.isConfigured() in src/services/ai-service.ts
+- [X] T036 [US2] Implement AIService.verifyImageContainsText() with vision prompt in src/services/ai-service.ts
+- [X] T037 [US2] Implement image download utility for screenshot URLs in src/utils/image.ts
+- [X] T038 [US2] Implement screenshot verification logic with OCR primary and AI fallback in src/commands/verify.ts
+- [X] T039 [US2] Add 80% confidence threshold for OCR fallback decision in src/commands/verify.ts
+- [X] T040 [US2] Add ERROR result handling for failed screenshot downloads in src/commands/verify.ts
 
 **Checkpoint**: User Story 2 complete - screenshot verification with OCR/AI working
 
@@ -107,10 +107,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] Implement BrowserService.getSetupInstructions() with platform-specific commands in src/services/browser-service.ts
-- [ ] T042 [US3] Add connection failure detection and instruction display in src/commands/verify.ts
-- [ ] T043 [US3] Add retry prompt after user confirms Chrome setup in src/commands/verify.ts
-- [ ] T044 [US3] Add --port flag support for custom debugging port in src/commands/verify.ts
+- [X] T041 [US3] Implement BrowserService.getSetupInstructions() with platform-specific commands in src/services/browser-service.ts
+- [X] T042 [US3] Add connection failure detection and instruction display in src/commands/verify.ts
+- [X] T043 [US3] Add retry prompt after user confirms Chrome setup in src/commands/verify.ts
+- [X] T044 [US3] Add --port flag support for custom debugging port in src/commands/verify.ts
 
 **Checkpoint**: User Story 3 complete - first-time users get clear setup guidance
 
@@ -124,13 +124,13 @@
 
 ### Implementation for User Story 4
 
-- [ ] T045 [US4] Implement resume logic to skip rows with existing results in src/commands/verify.ts
-- [ ] T046 [US4] Add --overwrite flag support to force reprocessing in src/commands/verify.ts
-- [ ] T047 [US4] Implement watch mode polling loop with configurable interval in src/commands/verify.ts
-- [ ] T048 [US4] Add --watch and --interval flag support in src/commands/verify.ts
-- [ ] T049 [US4] Implement graceful Ctrl+C handling with final summary in src/commands/verify.ts
-- [ ] T050 [US4] Add configuration save prompt after successful run in src/commands/verify.ts
-- [ ] T051 [US4] Add configuration reuse prompt on subsequent runs in src/commands/verify.ts
+- [X] T045 [US4] Implement resume logic to skip rows with existing results in src/commands/verify.ts
+- [X] T046 [US4] Add --overwrite flag support to force reprocessing in src/commands/verify.ts
+- [X] T047 [US4] Implement watch mode polling loop with configurable interval in src/commands/verify.ts
+- [X] T048 [US4] Add --watch and --interval flag support in src/commands/verify.ts
+- [X] T049 [US4] Implement graceful Ctrl+C handling with final summary in src/commands/verify.ts
+- [X] T050 [US4] Add configuration save prompt after successful run in src/commands/verify.ts
+- [X] T051 [US4] Add configuration reuse prompt on subsequent runs in src/commands/verify.ts
 
 **Checkpoint**: User Story 4 complete - resume and watch mode functional
 
@@ -144,13 +144,13 @@
 
 ### Implementation for User Story 5
 
-- [ ] T052 [US5] Implement dry-run mode displaying row counts and column mapping in src/commands/verify.ts
-- [ ] T053 [US5] Add --dry-run flag support in src/commands/verify.ts
-- [ ] T054 [US5] Implement HTML report generator in src/utils/report.ts
-- [ ] T055 [US5] Add summary statistics section to HTML report in src/utils/report.ts
-- [ ] T056 [US5] Add detailed row-by-row results table to HTML report in src/utils/report.ts
-- [ ] T057 [US5] Add pass/fail/error chart visualization to HTML report in src/utils/report.ts
-- [ ] T058 [US5] Add --report flag support and report generation trigger in src/commands/verify.ts
+- [X] T052 [US5] Implement dry-run mode displaying row counts and column mapping in src/commands/verify.ts
+- [X] T053 [US5] Add --dry-run flag support in src/commands/verify.ts
+- [X] T054 [US5] Implement HTML report generator in src/utils/report.ts
+- [X] T055 [US5] Add summary statistics section to HTML report in src/utils/report.ts
+- [X] T056 [US5] Add detailed row-by-row results table to HTML report in src/utils/report.ts
+- [X] T057 [US5] Add pass/fail/error chart visualization to HTML report in src/utils/report.ts
+- [X] T058 [US5] Add --report flag support and report generation trigger in src/commands/verify.ts
 
 **Checkpoint**: User Story 5 complete - dry-run and reporting functional
 
@@ -160,12 +160,12 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T059 [P] Add comprehensive error messages with exit codes per SPEC.md in src/index.ts
-- [ ] T060 [P] Add npm scripts: start, build, test in package.json
-- [ ] T061 [P] Create bin entry point for global installation in package.json
-- [ ] T062 Validate quickstart.md instructions work end-to-end
-- [ ] T063 Add rate limiting delay (100ms) between Gemini API calls in src/services/ai-service.ts
-- [ ] T064 Final code cleanup and TypeScript strict mode validation
+- [X] T059 [P] Add comprehensive error messages with exit codes per SPEC.md in src/index.ts
+- [X] T060 [P] Add npm scripts: start, build, test in package.json
+- [X] T061 [P] Create bin entry point for global installation in package.json
+- [X] T062 Validate quickstart.md instructions work end-to-end
+- [X] T063 Add rate limiting delay (100ms) between Gemini API calls in src/services/ai-service.ts
+- [X] T064 Final code cleanup and TypeScript strict mode validation
 
 ---
 
