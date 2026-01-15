@@ -18,6 +18,7 @@ build/
 # Service account credentials
 service-account.json
 *-service-account.json
+yng-gcp-api-experiment-*.json
 
 # Configuration (may contain sensitive data)
 .ynam-tools.json
