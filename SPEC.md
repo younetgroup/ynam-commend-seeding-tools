@@ -1,26 +1,33 @@
-# YNAM-Tools Specification
+# YNAM Paid Buzz Content Generator Specification
 
 ## Overview
 
-**ynam-tools** is an extensible CLI automation toolkit for verifying Facebook comments against Google Sheets data. The tool connects to an existing Chrome browser session (with user's login) and automates the verification workflow.
+**ynam-tools paidbuzz** is a content generation command that automatically creates social media comments for the MSD HPV awareness campaign ("Paid Buzz"). It reads Medical Claims from a Google Sheet, generates multiple persona-appropriate comments following strict guidelines, and writes results back to the sheet.
 
 ### Primary Use Case
-Verify that comment content from a Google Sheet appears on:
-1. The Facebook comment page (direct link verification)
-2. A screenshot image (OCR/Vision verification)
+Generate authentic, diverse Vietnamese comments based on:
+1. Medical Claims (input from Google Sheet)
+2. Quantity specification per claim
+3. Cohort targeting (persona groups)
+4. Content style guidelines (5 phong cách)
+5. Strict compliance rules (brand mention, disclaimer, banned words)
 
 ---
 
 ## Requirements Summary
 
-### Original Problem
+### Input/Output Columns
 ```
-Sheet at: https://docs.google.com/spreadsheets/d/18cg0Ik9a30DfY_S8-Ba-QI4VSs_iiUWu3VR2A4wT7pA/edit?gid=1616810619#gid=1616810619
-- Column L: Comment content
-- Column N: Link to Facebook comment
-- Column O: Screenshot link
-- Column Q: Output - link verification result (1/0)
-- Column R: Output - screenshot verification result (1/0/ERROR)
+Sheet at: [User-provided Google Sheet URL]
+- Column D (default): Medical Claim - The health claim/message to base comments on
+- Column G (default): Quantity of content - How many comments to generate per claim
+- Column M (default): Output - STT - Persona (e.g., "1 - YAW", "2 - MAW")
+- Column N (default): Output - Phong cách (content style used)
+- Column O (default): Output - Hướng chính bình luận (main comment direction)
+- Column P (default): Output - Nội dung bình luận (full comment content)
+
+Optional:
+- Cohort column: -1 (random) by default, or specified cohorts separated by ","
 ```
 
 ---
@@ -29,160 +36,255 @@ Sheet at: https://docs.google.com/spreadsheets/d/18cg0Ik9a30DfY_S8-Ba-QI4VSs_iiU
 
 | Component | Technology |
 |-----------|------------|
-| Runtime | Node.js / TypeScript |
-| Browser Automation | Playwright (CDP connection) |
+| Runtime | Node.js 18+ / TypeScript |
+| AI/LLM | Gemini API (@google/generative-ai) |
 | Sheet Access | Google Sheets API (Service Account) |
-| OCR/Vision | Gemini API (multimodal) with local OCR fallback |
 | CLI Framework | Inquirer.js (interactive prompts) |
-| Architecture | Command pattern (extensible) |
+| CLI Parsing | Commander.js |
+| Progress Display | cli-progress |
+| Architecture | Command pattern (extends existing base-command) |
 
 ### Environment Variables
 ```bash
+# Required
 GEMINI_API_KEY=<your-gemini-api-key>
 GOOGLE_SERVICE_ACCOUNT_PATH=<path-to-service-account.json>
+
+# Optional (with defaults)
+GEMINI_DEFAULT_MODEL=gemini-1.5-flash  # Model for both generation and validation
 ```
 
 ---
 
 ## Architecture
 
-### Command Pattern Structure
+### New Files Structure
 ```
 src/
-├── index.ts                 # CLI entry point
 ├── commands/
-│   ├── base-command.ts      # Abstract base command
-│   ├── verify.ts            # Comment verification command
-│   └── [future commands]    # Content generation, etc.
+│   └── paidbuzz.ts              # Paid Buzz content generation command
 ├── services/
-│   ├── browser-service.ts   # Chrome CDP connection
-│   ├── sheet-service.ts     # Google Sheets API
-│   ├── ai-service.ts        # Gemini API wrapper
-│   └── ocr-service.ts       # Local OCR (Tesseract)
-├── utils/
-│   ├── text-matcher.ts      # Normalized text matching
-│   ├── vietnamese.ts        # Diacritics normalization
-│   ├── config.ts            # Config file handling
-│   └── logger.ts            # Logging utilities
+│   ├── content-generator.ts      # LLM-based content generation logic
+│   └── content-validator.ts      # Validation and refinement logic
+├── prompts/                      # External prompt template files
+│   ├── generation-prompt.md      # Main generation prompt template
+│   ├── validation-prompt.md      # Validation/refinement prompt template
+│   ├── similarity-prompt.md      # Duplicate detection prompt template
+│   ├── cohort-guidelines.md      # Cohort definitions and examples
+│   ├── style-guidelines.md       # 5 Phong cách definitions
+│   ├── comment-formula.md        # 4-part comment structure rules
+│   └── brand-keywords.md         # Brand mention keywords and rules
 └── types/
-    └── index.ts             # TypeScript interfaces
+    └── paidbuzz.ts               # TypeScript interfaces for paidbuzz
 ```
 
 ### Service Responsibilities
 
-**BrowserService**
-- Connect to Chrome via CDP (port 9222 default)
-- Auto-detect running Chrome with debugging port
-- Provide step-by-step guide if connection fails
-- Manage tabs for concurrent processing
+**ContentGeneratorService**
+- Load prompt templates from `/prompts/` directory
+- Construct generation prompts with context (medical claim, cohort, style, length)
+- Call Gemini API for content generation
+- Parse structured output (persona, style, direction, content)
+- Handle batch-aware generation for diversity
 
-**SheetService**
-- Authenticate via service account
-- Read sheet data with column mapping
-- Write results directly to specified columns
-- Support both column letters (L, N, O) and header names
+**ContentValidatorService**
+- Validate generated content against rules:
+  - Banned words check (tiêm, chích, forbidden diseases)
+  - Brand mention presence (vaccine + healthy lifestyle + screening)
+  - Disclaimer presence and correctness
+  - Icon usage per cohort (required for YAW/MAW/MWT, forbidden for MALE)
+  - Word count within target range (±15% tolerance)
+- Call Gemini API for validation/refinement
+- Detect duplicate narrative frameworks via LLM comparison
 
-**AIService**
-- Wrap Gemini API for vision tasks
-- Handle rate limiting with exponential backoff
-- Accept image + text prompt for verification
+**SheetService (existing, extended)**
+- Read claims with column mapping
+- Insert rows for quantity > 1 output
+- Write results per-claim after generation
 
-**OCRService**
-- Local Tesseract OCR as primary method
-- Fallback to Gemini Vision if confidence is low
+---
+
+## Content Generation Flow
+
+### Hybrid Approach: Generation + Validation
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: BATCH PLANNING                                             │
+├─────────────────────────────────────────────────────────────────────┤
+│ 1. Load all rows from sheet                                         │
+│ 2. Calculate total comments needed (sum of quantities)              │
+│ 3. Assign length cycle: Short → Medium → Long → repeat (global)     │
+│ 4. For each row, determine cohort (random if -1)                    │
+│ 5. LLM analyzes Medical Claims → selects appropriate Phong cách     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ PHASE 2: GENERATION (per claim)                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│ For each claim:                                                     │
+│   1. Build context: claim, cohorts, styles, lengths, prev comments  │
+│   2. Call Gemini API with generation prompt                         │
+│   3. Parse output: [persona, style, direction, content] × quantity  │
+│   4. Proceed to validation                                          │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ PHASE 3: VALIDATION (per comment, up to 3 attempts)                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ For each generated comment:                                         │
+│   1. Check banned words (programmatic)                              │
+│   2. Check brand mention presence (programmatic)                    │
+│   3. Check disclaimer presence (programmatic, LLM fixes if needed)  │
+│   4. Check icon usage per cohort (programmatic)                     │
+│   5. Check word count ±15% of target (programmatic)                 │
+│   6. If any fail → regenerate with specific feedback (max 3 tries)  │
+│   7. After 3 failures → mark as [MANUAL REVIEW]                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ PHASE 4: SIMILARITY CHECK (per batch)                               │
+├─────────────────────────────────────────────────────────────────────┤
+│ After generating all comments for a claim:                          │
+│   1. Send batch to LLM for narrative framework similarity analysis  │
+│   2. If duplicates detected → auto-regenerate flagged comments      │
+│   3. Re-validate regenerated comments                               │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ PHASE 5: WRITE TO SHEET (per claim)                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ For each claim batch:                                               │
+│   1. Write first comment to source row (overwrite M, N, O, P)       │
+│   2. Insert additional rows below for comments 2+                   │
+│   3. Write remaining comments to inserted rows                      │
+│   4. Update progress display                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Features
 
-### 1. Chrome Connection Flow
-```
-1. Attempt connection to localhost:9222
-2. If success → proceed
-3. If fail → display instructions:
-   "Chrome is not running with debugging enabled.
-
-    To enable:
-    1. Close all Chrome windows
-    2. Run: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222
-    3. Login to Facebook in that Chrome window
-    4. Re-run this tool"
-4. Retry connection after user confirms
-```
-
-### 2. Interactive Column Selection
+### 1. Interactive TUI Column Selection
 ```
 ? Sheet URL: https://docs.google.com/spreadsheets/d/...
 
 Fetching sheet preview...
 
-   | A          | B      | C    | ... | L              | N                  | O                |
----|------------|--------|------|-----|----------------|--------------------| -----------------|
- 1 | Date       | Author | Type | ... | Comment Content| Comment Link       | Screenshot Link  |
- 2 | 2024-01-01 | User1  | FB   | ... | Hello World    | https://fb.com/... | https://img/...  |
- 3 | 2024-01-02 | User2  | FB   | ... | Xin chào       | https://fb.com/... | https://img/...  |
+   | A    | B      | C    | D                    | G  | M        | N          | O              | P        |
+---|------|--------|------|----------------------|----|----------|------------|----------------|----------|
+ 1 | Date | Author | Type | Medical Claim        | Qty| STT-Pers | Phong cách | Hướng chính    | Nội dung |
+ 2 | ...  | ...    | ...  | Nhiễm HPV phổ biến...| 5  |          |            |                |          |
+ 3 | ...  | ...    | ...  | 40.3% người VN...    | 3  |          |            |                |          |
 
-? Column containing comment text: L (or "Comment Content")
-? Column containing comment link: N (or "Comment Link")
-? Column containing screenshot link: O (or "Screenshot Link")
-? Column to write link verification result: Q
-? Column to write screenshot verification result: R
+? Column containing Medical Claim: D (default: D)
+? Column containing Quantity: G (default: G)
+? Column for Cohort (optional, -1 for random): (default: -1)
+? Output column for STT - Persona: M (default: M)
+? Output column for Phong cách: N (default: N)
+? Output column for Hướng chính: O (default: O)
+? Output column for Nội dung: P (default: P)
 ```
 
-### 3. Text Matching (Normalized)
-- Case-insensitive comparison
-- Whitespace normalization (multiple spaces → single space)
-- Punctuation ignored
-- Vietnamese diacritics normalization:
-  - `Xin chào` matches `Xin chao` (fallback)
-  - `Xin chào` matches `XIN CHÀO` (case)
+### 2. Cohort Distribution
+- **Random (default)**: When Cohort column is -1 or not specified, randomly assign from 5 cohorts:
+  - MASS (Đại chúng)
+  - MWT (Mom With Teen)
+  - MAW (Middle Aged Woman)
+  - YAW (Young Adult Woman)
+  - MALE (Nam giới)
+- **Specified**: User can specify cohorts as comma-separated list (e.g., "MASS, MWT, YAW")
 
-### 4. Processing Modes
-- **Sequential** (default): One row at a time
-- **Parallel**: Configurable via `--concurrency=N` (default: 1)
-- **Row Range**: Process specific rows via `--rows=10-50`
+### 3. Content Style Selection (LLM-Derived)
+The LLM analyzes the Medical Claim sentiment and selects appropriate style:
+1. **Người Am Hiểu** (The Savvy Researcher) - Data-driven, objective
+2. **Người Kể Chuyện Đồng Cảm** (The Empathetic Storyteller) - Emotional, personal
+3. **Người Giải Quyết Vấn Đề** (The Problem Solver) - Practical, advisory
+4. **Người Truyền Cảm Hứng Tích Cực** (The Positive Encourager) - Optimistic, empowering
+5. **Người Phá Vỡ Định Kiến** (The Myth Buster) - Direct, corrective
 
-### 5. Error Handling
-- Retry failed rows 2-3 times with exponential backoff
-- On persistent failure: log error, write "ERROR" to result column, continue
-- Bad screenshot URLs (404): write "ERROR" to column R
+### 4. Comment Length Cycling (Global Row Order)
+```
+Row 1, Comment 1: Ngắn (52-70 words)
+Row 1, Comment 2: Trung bình (70-90 words)
+Row 1, Comment 3: Dài (90-120 words)
+Row 2, Comment 1: Ngắn (52-70 words)
+Row 2, Comment 2: Trung bình (70-90 words)
+... continues cycling
+```
 
-### 6. Output Behavior
-- Write directly to Google Sheet
-- Skip cells that already have values (resume capability)
-- Support `--overwrite` flag to replace existing values
+### 5. Validation Rules (Strict)
+
+| Rule | Check Type | Action on Failure |
+|------|------------|-------------------|
+| Banned words (tiêm, chích) | Programmatic | Regenerate |
+| Forbidden diseases | Programmatic | Regenerate |
+| Brand mention presence | Programmatic | Regenerate |
+| Disclaimer correctness | LLM validation | LLM fixes or regenerate |
+| Icon usage (per cohort) | Programmatic | Regenerate |
+| Word count (±15%) | Programmatic | Regenerate |
+| Narrative framework duplicate | LLM comparison | Regenerate flagged |
+
+### 6. Multi-Row Output Handling
+When Quantity > 1:
+1. First comment overwrites source row (columns M, N, O, P)
+2. Additional comments are inserted as new rows immediately below
+3. New rows copy claim data but have their own generated content
 
 ### 7. Dry Run Mode
 ```bash
-ynam-tools verify --dry-run
+npm start paidbuzz -- --dry-run
 ```
-Output:
+Output shows what would be generated without writing to sheet:
 ```
 DRY RUN MODE - No changes will be made
 
 Sheet: https://docs.google.com/spreadsheets/d/...
-Rows to process: 45 (rows 2-46)
-Rows with existing results: 12 (will be skipped)
-Rows to verify: 33
+Rows to process: 10
+Total comments to generate: 45
 
-Column mapping:
-  Comment text:    L (Comment Content)
-  Comment link:    N (Comment Link)
-  Screenshot:      O (Screenshot Link)
-  Link result:     Q
-  Screenshot result: R
+Preview of first claim:
+  Medical Claim: "Nhiễm HPV sinh dục là bệnh lây truyền..."
+  Quantity: 5
+  Cohorts: Random
 
-Chrome connection: ✓ Connected to localhost:9222
-Gemini API: ✓ API key configured
+  Generated Comments:
+  [1 - YAW] Phong cách: Người Kể Chuyện Đồng Cảm
+  Hướng chính: Chia sẻ trải nghiệm cá nhân về nhận thức HPV
+  Nội dung: "Mình cũng từng nghĩ HPV là chuyện xa vời..."
+
+  [2 - MAW] ...
 ```
 
 ### 8. Watch Mode
 ```bash
-ynam-tools verify --watch --interval=5
+npm start paidbuzz -- --watch --interval=5
 ```
-- Poll sheet every N minutes for new unfilled rows
-- Process new rows automatically
+- Poll sheet every N minutes for new rows (empty output columns)
+- Automatically process new rows
 - Stop with Ctrl+C
+
+### 9. Progress Display (Detailed)
+```
+Processing claims...
+
+Claim 1/10: "Nhiễm HPV sinh dục..."
+  Comment 1/5: Generating... ✓ Validating... ✓ Done
+  Comment 2/5: Generating... ✓ Validating... ✗ Regenerating... ✓ Done
+  Comment 3/5: Generating... ✓ Validating... ✓ Done
+  Comment 4/5: Generating... ✓ Validating... ✓ Done
+  Comment 5/5: Generating... ✓ Validating... ✓ Done
+  Similarity check... ✓ No duplicates
+  Writing to sheet... ✓
+
+Claim 2/10: "40.3% người tham gia khảo sát..."
+  ...
+```
 
 ---
 
@@ -191,86 +293,117 @@ ynam-tools verify --watch --interval=5
 ### Commands
 ```bash
 # Interactive mode (recommended)
-ynam-tools verify
+npm start paidbuzz
 
 # With options
-ynam-tools verify \
+npm start paidbuzz -- \
   --sheet="https://docs.google.com/spreadsheets/d/..." \
-  --comment-col=L \
-  --link-col=N \
-  --screenshot-col=O \
-  --link-result-col=Q \
-  --screenshot-result-col=R \
+  --claim-col=D \
+  --quantity-col=G \
+  --cohort-col=H \
+  --persona-result-col=M \
+  --style-result-col=N \
+  --direction-result-col=O \
+  --content-result-col=P \
   --rows=1-100 \
-  --concurrency=3 \
   --verbose
 
 # Dry run
-ynam-tools verify --dry-run
+npm start paidbuzz -- --dry-run
 
 # Watch mode
-ynam-tools verify --watch --interval=5
+npm start paidbuzz -- --watch --interval=5
 ```
 
 ### Flags
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--sheet` | Google Sheet URL | (prompt) |
-| `--comment-col` | Column with comment text | (prompt) |
-| `--link-col` | Column with comment link | (prompt) |
-| `--screenshot-col` | Column with screenshot URL | (prompt) |
-| `--link-result-col` | Column to write link result | (prompt) |
-| `--screenshot-result-col` | Column to write screenshot result | (prompt) |
-| `--rows` | Row range to process (e.g., "10-50") | all |
-| `--concurrency` | Parallel processing count | 1 |
-| `--dry-run` | Validate config without processing | false |
-| `--verbose` | Show per-row status | false |
-| `--overwrite` | Overwrite existing results | false |
+| `--claim-col` | Column letter for Medical Claim | D |
+| `--quantity-col` | Column letter for quantity | G |
+| `--cohort-col` | Column for cohort (-1 for random) | -1 |
+| `--persona-result-col` | Column to write STT - Persona | M |
+| `--style-result-col` | Column to write Phong cách | N |
+| `--direction-result-col` | Column to write Hướng chính | O |
+| `--content-result-col` | Column to write Nội dung | P |
+| `--rows` | Row range to process (e.g., "2-50") | all |
+| `--dry-run` | Preview generation without writing | false |
+| `--verbose` | Show detailed per-comment status | false |
+| `--overwrite` | Overwrite rows with existing results | false |
 | `--watch` | Enable watch mode | false |
 | `--interval` | Watch mode poll interval (minutes) | 5 |
-| `--report` | Generate HTML report | false |
-| `--port` | Chrome debugging port | 9222 |
 
 ---
 
-## Output & Reporting
+## Output Format
 
-### Terminal Output (Default)
+### Terminal Summary (Always shown)
 ```
-Processing 33 rows...
-[████████████████████░░░░░░░░░░] 67% | 22/33 | ETA: 45s
-```
+═══════════════════════════════════════════════════════════════
+  CONTENT GENERATION COMPLETE
+═══════════════════════════════════════════════════════════════
+  Claims processed:        10
+  Comments generated:      45
+  Validation passes:       42
+  Regenerations:           8
+  Manual review needed:    3
 
-### Verbose Output (`--verbose`)
-```
-Processing 33 rows...
-Row 2: Link ✓ Screenshot ✓
-Row 3: Link ✓ Screenshot ✓
-Row 4: Link ✗ Screenshot ✓
-Row 5: Link ✓ Screenshot ERROR (404)
-...
-```
+  Cohort distribution:
+    MASS: 9  |  MWT: 10  |  MAW: 8  |  YAW: 12  |  MALE: 6
 
-### Summary (Always shown)
-```
-═══════════════════════════════════════════
-  VERIFICATION COMPLETE
-═══════════════════════════════════════════
-  Total rows processed:  33
-  Link verification:     30 passed, 3 failed
-  Screenshot verification: 28 passed, 3 failed, 2 errors
+  Style distribution:
+    Am Hiểu: 12  |  Đồng Cảm: 8  |  Giải Quyết: 10  |  Tích Cực: 9  |  Phá Vỡ: 6
 
-  Time elapsed: 2m 34s
+  Time elapsed: 5m 23s
   Results written to sheet: ✓
-═══════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
 ```
 
-### HTML Report (`--report`)
-Generates `verification-report-{timestamp}.html` with:
-- Summary statistics
-- Charts (pass/fail/error breakdown)
-- Detailed row-by-row results
-- Error log with links
+---
+
+## Prompt Template Files
+
+The system loads prompt templates from external files to allow updates without code changes.
+
+### `/prompts/generation-prompt.md`
+Contains the main generation prompt with placeholders:
+- `{{MEDICAL_CLAIM}}` - The input claim
+- `{{QUANTITY}}` - Number of comments to generate
+- `{{COHORTS}}` - Assigned cohorts for this batch
+- `{{LENGTHS}}` - Length targets for each comment
+- `{{PREVIOUS_COMMENTS}}` - Recent comments for diversity awareness
+- `{{COHORT_GUIDELINES}}` - Loaded from cohort-guidelines.md
+- `{{STYLE_GUIDELINES}}` - Loaded from style-guidelines.md
+- `{{COMMENT_FORMULA}}` - Loaded from comment-formula.md
+- `{{BRAND_KEYWORDS}}` - Loaded from brand-keywords.md
+
+### `/prompts/validation-prompt.md`
+Contains validation/refinement instructions for checking:
+- Compliance with all rules
+- Disclaimer correctness
+- Suggestions for fixes
+
+### `/prompts/similarity-prompt.md`
+Contains instructions for detecting duplicate narrative frameworks.
+
+---
+
+## Error Handling
+
+### Retry Strategy
+- **API calls**: 3 retries with exponential backoff (1s, 2s, 4s, max 10s)
+- **Validation failures**: Up to 3 regeneration attempts per comment
+- **After max retries**: Mark as `[MANUAL REVIEW]` and continue
+
+### Error Codes
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Configuration error (API key, env vars) |
+| 3 | Google Sheets authentication failed |
+| 4 | Invalid sheet URL or permissions |
+| 5 | Gemini API error |
 
 ---
 
@@ -284,206 +417,50 @@ After first successful run:
 Saves to `.ynam-tools.json`:
 ```json
 {
-  "lastSheet": "https://docs.google.com/spreadsheets/d/...",
-  "columnMapping": {
-    "comment": "L",
-    "link": "N",
-    "screenshot": "O",
-    "linkResult": "Q",
-    "screenshotResult": "R"
-  },
-  "concurrency": 1
-}
-```
-
-On subsequent runs:
-```
-? Use saved configuration? (Y/n)
-  Sheet: https://docs.google.com/spreadsheets/d/...
-  Columns: L→Q (link), O→R (screenshot)
-```
-
----
-
-## Verification Logic
-
-### Link Verification (Column N → Q)
-```typescript
-async function verifyLink(commentText: string, linkUrl: string): Promise<0 | 1> {
-  // 1. Open link in Chrome tab
-  const page = await browser.newPage();
-  await page.goto(linkUrl, { waitUntil: 'networkidle' });
-
-  // 2. Get page text content
-  const pageText = await page.evaluate(() => document.body.innerText);
-
-  // 3. Normalized text match
-  const normalizedComment = normalizeText(commentText);
-  const normalizedPage = normalizeText(pageText);
-
-  // 4. Return result
-  return normalizedPage.includes(normalizedComment) ? 1 : 0;
-}
-```
-
-### Screenshot Verification (Column O → R)
-```typescript
-async function verifyScreenshot(commentText: string, imageUrl: string): Promise<0 | 1 | 'ERROR'> {
-  // 1. Download image
-  const imageBuffer = await downloadImage(imageUrl);
-  if (!imageBuffer) return 'ERROR';
-
-  // 2. Try local OCR first
-  const ocrResult = await ocrService.extractText(imageBuffer);
-  if (ocrResult.confidence > 0.8) {
-    const normalized = normalizeText(ocrResult.text);
-    return normalized.includes(normalizeText(commentText)) ? 1 : 0;
-  }
-
-  // 3. Fallback to Gemini Vision
-  const geminiResult = await aiService.verifyImageContainsText(imageBuffer, commentText);
-  return geminiResult ? 1 : 0;
-}
-```
-
-### Text Normalization
-```typescript
-function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')                          // Decompose Vietnamese diacritics
-    .replace(/[\u0300-\u036f]/g, '')           // Remove diacritics (optional match)
-    .replace(/[^\w\s]/g, '')                   // Remove punctuation
-    .replace(/\s+/g, ' ')                      // Normalize whitespace
-    .trim();
-}
-```
-
----
-
-## Gemini API Integration
-
-### Vision Verification Prompt
-```typescript
-const prompt = `
-Look at this image and determine if the following text appears in it.
-The text may be in Vietnamese.
-
-Text to find: "${commentText}"
-
-Respond with only "YES" if the text appears in the image, or "NO" if it does not.
-Consider partial matches and slight variations as a match.
-`;
-
-const result = await gemini.generateContent([
-  { inlineData: { mimeType: 'image/png', data: imageBase64 } },
-  { text: prompt }
-]);
-```
-
-### Rate Limiting
-- Default delay between API calls: 100ms
-- On 429 error: exponential backoff (1s, 2s, 4s, 8s, max 30s)
-- Max retries: 5
-
----
-
-## Future Extensibility
-
-The command pattern architecture allows adding new commands:
-
-```typescript
-// Future: Content generation command
-class GenerateCommand extends BaseCommand {
-  name = 'generate';
-  description = 'Generate content using AI';
-
-  async execute(options: GenerateOptions): Promise<void> {
-    // Implementation
-  }
-}
-
-// Future: Summarize command
-class SummarizeCommand extends BaseCommand {
-  name = 'summarize';
-  description = 'Summarize verification results';
-
-  async execute(options: SummarizeOptions): Promise<void> {
-    // Implementation
+  "paidbuzz": {
+    "lastSheet": "https://docs.google.com/spreadsheets/d/...",
+    "columnMapping": {
+      "claim": "D",
+      "quantity": "G",
+      "cohort": "-1",
+      "personaResult": "M",
+      "styleResult": "N",
+      "directionResult": "O",
+      "contentResult": "P"
+    }
   }
 }
 ```
-
-Usage:
-```bash
-ynam-tools generate --type=response --input=comments.csv
-ynam-tools summarize --sheet=... --output=report.md
-```
-
----
-
-## Installation & Setup
-
-### Prerequisites
-- Node.js 18+
-- Google Chrome browser
-- Google Cloud service account with Sheets API access
-- Gemini API key
-
-### Installation
-```bash
-git clone <repository>
-cd ynam-tools
-npm install
-```
-
-### Configuration
-```bash
-# Create .env file
-cp .env.example .env
-
-# Edit with your credentials
-GEMINI_API_KEY=your-api-key
-GOOGLE_SERVICE_ACCOUNT_PATH=./service-account.json
-```
-
-### First Run
-```bash
-npm start
-# or
-npx ts-node src/index.ts verify
-```
-
----
-
-## Error Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Chrome connection failed |
-| 2 | Google Sheets authentication failed |
-| 3 | Invalid sheet URL or permissions |
-| 4 | Gemini API error |
-| 5 | Configuration error |
 
 ---
 
 ## Security Considerations
 
 - Service account JSON should not be committed to git
-- Chrome debugging port should only be bound to localhost
 - API keys stored in environment variables, not code
 - No sensitive data logged in verbose mode
+- Prompt templates should be reviewed before use
 
 ---
 
-## Changelog
+## Validation Checklist
 
-### v1.0.0 (Initial)
-- Comment verification via link and screenshot
-- Interactive CLI with column selection
-- Gemini Vision integration
-- Local OCR fallback
-- Watch mode
-- HTML report generation
+### Programmatic Checks
+1. **Banned Words**: `tiêm`, `chích`, `ung thư dương vật`, `ung thư hầu họng`, `ung thư vòm họng`
+2. **Brand Mention**: Must include at least one keyword from approved list AND mention vaccine + healthy lifestyle + screening for women
+3. **Disclaimer**: Must contain exact disclaimer text (can be at end)
+4. **Icons**: Required for YAW/MAW/MWT, forbidden for MALE
+5. **Word Count**: Within ±15% of target (Ngắn: 44-80, TB: 60-103, Dài: 77-138)
+
+### LLM-Based Checks
+1. **Disclaimer Validation**: Verify disclaimer is correct and well-placed
+2. **Narrative Similarity**: Detect duplicate "khung sườn ý tưởng" across batch
+
+---
+
+## Future Extensibility
+
+This command follows the existing command pattern, allowing future additions:
+- `npm start earnedbuzz` - Similar generator for Earned Buzz campaign
+- `npm start analyze` - Analyze existing comments for compliance
+- `npm start translate` - Translate generated content to other languages

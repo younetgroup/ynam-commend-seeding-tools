@@ -10,7 +10,8 @@
       "Bash(git pull:*)",
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Add complete specification and implementation plan for YNAM Comment Verification Tool\n\n- Add feature specification with 5 user stories \\(P1-P3 priorities\\)\n- Generate implementation plan with TypeScript/Node.js tech stack\n- Create data model with entity definitions and validation rules\n- Define service contracts for all components\n- Generate 64 implementation tasks organized by user story\n- Add research document with technology decisions\n- Include quickstart guide for developers\n\nFeature Branch: 001-comment-verification\nTotal Tasks: 64 \\(Setup, Foundational, 5 User Stories, Polish\\)\nMVP Scope: User Story 1 \\(Interactive Verification\\) = 31 tasks\n\nCo-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(pandoc:*)"
     ]
   }
 }
