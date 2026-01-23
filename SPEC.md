@@ -464,3 +464,688 @@ This command follows the existing command pattern, allowing future additions:
 - `npm start earnedbuzz` - Similar generator for Earned Buzz campaign
 - `npm start analyze` - Analyze existing comments for compliance
 - `npm start translate` - Translate generated content to other languages
+
+---
+
+# Desktop Application Specification
+
+## Overview
+
+**YouNetAM Spreadsheet Tool** is an Electron-based desktop application that provides a GUI wrapper for the CLI tools, making them accessible to non-technical users. The application includes the existing verification functionality plus new duplication detection capabilities.
+
+### Application Name
+**YouNetAM Spreadsheet Tool**
+
+### Logo
+`docs/younet-logo.png`
+
+---
+
+## Architecture
+
+### Technology Stack
+| Component | Technology |
+|-----------|------------|
+| Desktop Framework | Electron |
+| Frontend | HTML/CSS/JavaScript (or React) |
+| Backend | Node.js (reuse existing CLI services) |
+| IPC | Electron IPC for main-renderer communication |
+| Shared Services | Reuse existing services from src/services/ |
+
+### Application Structure
+```
+ynam-comment-seending-tools/
+├── src/
+│   ├── electron/                    # Electron-specific code
+│   │   ├── main.ts                  # Electron main process
+│   │   ├── preload.ts               # Preload script for IPC
+│   │   └── menu.ts                  # Application menu
+│   ├── renderer/                    # Frontend code
+│   │   ├── index.html               # Main application window
+│   │   ├── styles/                  # CSS styles
+│   │   ├── components/              # UI components
+│   │   │   ├── setup-view.ts        # Initial setup screen
+│   │   │   ├── verify-tab.ts        # Verify Seeding tab
+│   │   │   └── dupdetection-tab.ts  # Duplication Detection tab
+│   │   └── utils/                   # Frontend utilities
+│   ├── commands/
+│   │   ├── verify.ts                # Existing verify command
+│   │   ├── paidbuzz.ts              # Existing paidbuzz command
+│   │   └── dupdetector.ts           # NEW: Duplication detection command
+│   └── services/
+│       └── similarity-service.ts    # NEW: Comment similarity detection
+```
+
+---
+
+## Features
+
+### 1. Initial Setup Screen
+
+**Purpose**: Guide users through prerequisite setup before accessing main functionality.
+
+**UI Elements**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  YouNetAM Spreadsheet Tool                    [_] [□] [×]   │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  [YouNet Logo]                                               │
+│                                                               │
+│  📋 Setup Instructions                                       │
+│                                                               │
+│  Before you begin, please ensure:                            │
+│                                                               │
+│  1. Share your Google Sheet with this service account:       │
+│     ┌───────────────────────────────────────────────────┐  │
+│     │ service-account@project.iam.gserviceaccount.com    │  │
+│     │                                         [Copy]      │  │
+│     └───────────────────────────────────────────────────┘  │
+│                                                               │
+│  2. Grant "Editor" permissions to allow read/write access    │
+│                                                               │
+│  3. Enter your Google Sheet URL below:                       │
+│     ┌───────────────────────────────────────────────────┐  │
+│     │ https://docs.google.com/spreadsheets/...          │  │
+│     └───────────────────────────────────────────────────┘  │
+│                                                               │
+│                              [Load Sheet]                     │
+│                                                               │
+│  Status: Waiting for sheet URL...                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Functionality**:
+- Display service account email from environment variables
+- Copy button for easy sharing
+- Sheet URL input with validation
+- "Load Sheet" button that:
+  - Validates URL format
+  - Checks sheet permissions
+  - Loads sheet metadata (name, number of rows)
+  - Enables tabs on success
+  - Shows error message on failure
+
+**Permission Check**:
+```typescript
+async function checkSheetPermissions(sheetUrl: string): Promise<boolean> {
+  try {
+    const sheetService = new SheetService();
+    await sheetService.connect(sheetUrl);
+    // Try to read first row to verify read permission
+    await sheetService.getHeaders();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+```
+
+---
+
+### 2. Tab Navigation
+
+After successful sheet loading, the following tabs become active:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  YouNetAM Spreadsheet Tool                    [_] [□] [×]   │
+├─────────────────────────────────────────────────────────────┤
+│  [Verify Seeding] [Duplication Detection]                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  [Tab content here]                                          │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 3. Verify Seeding Tab
+
+**Purpose**: GUI wrapper for the existing `verify` command.
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Verify Seeding                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  📋 Column Configuration                                     │
+│                                                               │
+│  Comment Text Column:      [L  ▼]  (Column containing comment text)
+│  Comment Link Column:      [N  ▼]  (Column containing Facebook link)
+│  Screenshot URL Column:    [O  ▼]  (Column containing screenshot URL)
+│  Link Result Column:       [Q  ▼]  (Column to write link verification)
+│  Screenshot Result Column: [R  ▼]  (Column to write screenshot result)
+│                                                               │
+│  ⚙️ Processing Options                                       │
+│                                                               │
+│  Row Range:  [All rows ▼]  or  From [__] to [__]            │
+│  Concurrency: [1 ▼] (Number of parallel verifications)      │
+│                                                               │
+│  ☑ Show verbose output                                       │
+│  ☑ Overwrite existing results                                │
+│  ☐ Dry run (preview without changes)                         │
+│                                                               │
+│  🌐 Browser Settings                                         │
+│                                                               │
+│  Chrome Debug Port: [9222]                                   │
+│                                                               │
+│  Status: ⚠️ Chrome is not running on port 9222              │
+│         [Start Chrome with Debug Mode]                       │
+│                                                               │
+│                     [Start Verification]                      │
+│                                                               │
+│  ─────────────────────────────────────────────────────────  │
+│  Progress: ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░ 50% (25/50 rows)            │
+│                                                               │
+│  📊 Summary:                                                 │
+│    - Processed: 25 comments                                  │
+│    - Verified: 20 ✓                                          │
+│    - Failed: 3 ✗                                             │
+│    - Errors: 2 ⚠️                                            │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Column Dropdowns**:
+- Auto-populate with sheet column letters (A-Z, AA-ZZ)
+- Remember last used configuration
+- Load from `.ynam-tools.json` if available
+
+**Browser Detection**:
+- Check if Chrome is running on specified port
+- Show status indicator (green = connected, red = not running)
+- "Start Chrome with Debug Mode" button launches Chrome with proper flags
+
+**Progress Display**:
+- Real-time progress bar
+- Current row being processed
+- Running summary of results
+- Live log output if verbose mode enabled
+
+**Button States**:
+- Disabled during processing
+- "Stop Verification" button replaces "Start" during run
+- Results summary shown after completion
+
+---
+
+### 4. Duplication Detection Tab (NEW)
+
+**Purpose**: Detect similar comments in a spreadsheet based on semantic similarity.
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Duplication Detection                                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  📋 Column Configuration                                     │
+│                                                               │
+│  Comment Column:        [P  ▼]  (Column containing comments to analyze)
+│  Result Cluster Column: [S  ▼]  (Column to write cluster IDs)
+│                                                               │
+│  🎯 Detection Settings                                       │
+│                                                               │
+│  Similarity Threshold: [85] % (0-100)                        │
+│                       ├────────┼────────┤                    │
+│                    Strict    Default  Lenient                │
+│                                                               │
+│  Row Range:  [All rows ▼]  or  From [__] to [__]            │
+│                                                               │
+│  ⚙️ Options                                                  │
+│                                                               │
+│  ☑ Show verbose output                                       │
+│  ☐ Dry run (preview without changes)                         │
+│                                                               │
+│                    [Start Detection]                          │
+│                                                               │
+│  ─────────────────────────────────────────────────────────  │
+│  Progress: ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░ 50% (25/50 comments)        │
+│                                                               │
+│  📊 Results:                                                 │
+│    - Total comments: 50                                      │
+│    - Unique comments: 38                                     │
+│    - Duplicate clusters: 6                                   │
+│    - Largest cluster: 5 comments                             │
+│                                                               │
+│  🔍 Duplicate Clusters Found:                                │
+│                                                               │
+│  Cluster 1 (5 comments) - Similarity: 92%                    │
+│    • Row 5: "Mình cũng từng nghĩ HPV là..."                 │
+│    • Row 12: "Mình cũng từng nghĩ rằng HPV..."              │
+│    • Row 23: "Trước đây mình cũng nghĩ HPV..."              │
+│    [View All]                                                │
+│                                                               │
+│  Cluster 2 (3 comments) - Similarity: 88%                    │
+│    • Row 8: "Nghe tin về HPV mình cũng..."                  │
+│    ...                                                        │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Similarity Threshold**:
+- Slider from 0-100%
+- Presets: Strict (95%), Default (85%), Lenient (70%)
+- Tooltip explaining: "Higher values detect only very similar comments"
+
+**Cluster Assignment**:
+- Each unique cluster gets an ID (Cluster 1, Cluster 2, etc.)
+- All comments in same cluster share the same ID
+- Unique comments get their own cluster ID
+- Written to Result Cluster Column
+
+**Results Display**:
+- Show summary statistics
+- Expandable list of clusters
+- Click to highlight rows in sheet
+- Export duplicate report option
+
+---
+
+## CLI Command: dupdetector
+
+### Command Specification
+
+```bash
+# Interactive mode
+npm start dupdetector
+
+# With options
+npm start dupdetector -- \
+  --sheet="https://docs.google.com/spreadsheets/d/..." \
+  --comment-col=P \
+  --cluster-col=S \
+  --threshold=85 \
+  --rows=1-100 \
+  --verbose \
+  --dry-run
+```
+
+### Flags
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--sheet` | Google Sheet URL | (prompt) |
+| `--comment-col` | Column containing comments | P |
+| `--cluster-col` | Column to write cluster IDs | S |
+| `--threshold` | Similarity threshold (0-100) | 85 |
+| `--rows` | Row range to process | all |
+| `--dry-run` | Preview without writing | false |
+| `--verbose` | Show detailed output | false |
+| `--overwrite` | Overwrite existing clusters | false |
+
+---
+
+## Implementation: Duplication Detection Algorithm
+
+### Approach: LLM-Based Semantic Similarity
+
+**Why LLM over traditional methods?**
+- Vietnamese text nuances (diacritics, word order)
+- Semantic understanding (paraphrasing detection)
+- Handles narrative framework similarity (not just exact words)
+
+### SimilarityService
+
+```typescript
+// src/services/similarity-service.ts
+
+export class SimilarityService {
+  private geminiClient: GoogleGenerativeAI;
+
+  constructor(apiKey: string) {
+    this.geminiClient = new GoogleGenerativeAI(apiKey);
+  }
+
+  /**
+   * Compare two comments and return similarity score
+   */
+  async compareComments(comment1: string, comment2: string): Promise<number> {
+    const prompt = `
+      Compare these two Vietnamese comments and rate their similarity from 0-100.
+
+      Consider:
+      - Same narrative framework/structure
+      - Similar main ideas and message
+      - Paraphrasing and word substitutions
+
+      Comment 1: "${comment1}"
+      Comment 2: "${comment2}"
+
+      Return only a number from 0-100.
+    `;
+
+    const model = this.geminiClient.getGenerativeModel({
+      model: 'gemini-1.5-flash'
+    });
+    const result = await model.generateContent(prompt);
+    const score = parseInt(result.response.text().trim());
+    return score;
+  }
+
+  /**
+   * Cluster comments by similarity
+   */
+  async clusterComments(
+    comments: Array<{row: number, text: string}>,
+    threshold: number
+  ): Promise<Map<number, number>> {
+    const clusters = new Map<number, number>(); // row -> cluster ID
+    let currentClusterId = 1;
+
+    for (let i = 0; i < comments.length; i++) {
+      if (clusters.has(comments[i].row)) continue;
+
+      const cluster: number[] = [comments[i].row];
+
+      for (let j = i + 1; j < comments.length; j++) {
+        if (clusters.has(comments[j].row)) continue;
+
+        const similarity = await this.compareComments(
+          comments[i].text,
+          comments[j].text
+        );
+
+        if (similarity >= threshold) {
+          cluster.push(comments[j].row);
+        }
+      }
+
+      // Assign cluster ID to all members
+      cluster.forEach(row => {
+        clusters.set(row, currentClusterId);
+      });
+
+      currentClusterId++;
+    }
+
+    return clusters;
+  }
+}
+```
+
+### DupDetectorCommand
+
+```typescript
+// src/commands/dupdetector.ts
+
+export class DupDetectorCommand extends BaseCommand {
+  async run(options: DupDetectorOptions): Promise<void> {
+    // 1. Load comments from sheet
+    const sheetService = new SheetService();
+    const comments = await sheetService.readColumn(
+      options.sheet,
+      options.commentCol,
+      options.rows
+    );
+
+    // 2. Cluster similar comments
+    const similarityService = new SimilarityService(
+      process.env.GEMINI_API_KEY!
+    );
+    const clusters = await similarityService.clusterComments(
+      comments,
+      options.threshold
+    );
+
+    // 3. Write cluster IDs back to sheet
+    if (!options.dryRun) {
+      await sheetService.writeColumn(
+        options.sheet,
+        options.clusterCol,
+        clusters
+      );
+    }
+
+    // 4. Display summary
+    this.displaySummary(comments, clusters, options.threshold);
+  }
+
+  private displaySummary(
+    comments: Array<{row: number, text: string}>,
+    clusters: Map<number, number>,
+    threshold: number
+  ): void {
+    const uniqueClusters = new Set(clusters.values());
+    const clusterSizes = new Map<number, number>();
+
+    clusters.forEach((clusterId) => {
+      clusterSizes.set(clusterId, (clusterSizes.get(clusterId) || 0) + 1);
+    });
+
+    const duplicateClusters = Array.from(clusterSizes.entries())
+      .filter(([_, size]) => size > 1)
+      .sort((a, b) => b[1] - a[1]);
+
+    logger.info('\n═══════════════════════════════════════════════');
+    logger.info('  DUPLICATION DETECTION COMPLETE');
+    logger.info('═══════════════════════════════════════════════');
+    logger.info(`  Total comments:      ${comments.length}`);
+    logger.info(`  Unique comments:     ${uniqueClusters.size}`);
+    logger.info(`  Duplicate clusters:  ${duplicateClusters.length}`);
+    logger.info(`  Similarity threshold: ${threshold}%`);
+
+    if (duplicateClusters.length > 0) {
+      logger.info('\n  Duplicate Clusters:');
+      duplicateClusters.forEach(([clusterId, size]) => {
+        logger.info(`    Cluster ${clusterId}: ${size} comments`);
+      });
+    }
+  }
+}
+```
+
+---
+
+## Desktop Application Flow
+
+### 1. Application Startup
+```
+1. Load Electron main process
+2. Create main window
+3. Load setup screen
+4. Check environment variables (GOOGLE_SERVICE_ACCOUNT_PATH, GEMINI_API_KEY)
+5. Display service account email
+6. Wait for user input
+```
+
+### 2. Sheet Loading
+```
+1. User enters sheet URL
+2. Click "Load Sheet"
+3. Validate URL format
+4. Check sheet permissions
+5. Load sheet metadata
+6. Enable tabs on success
+7. Populate column dropdowns
+8. Load saved configuration (if exists)
+```
+
+### 3. Verify Seeding Flow
+```
+1. User configures columns
+2. User sets options
+3. Check Chrome connection
+4. Click "Start Verification"
+5. Execute verify command via IPC
+6. Stream progress updates to UI
+7. Display results
+8. Save configuration
+```
+
+### 4. Duplication Detection Flow
+```
+1. User selects comment column
+2. User sets similarity threshold
+3. User selects result column
+4. Click "Start Detection"
+5. Execute dupdetector command via IPC
+6. Stream progress updates to UI
+7. Display clusters
+8. Write results to sheet
+9. Save configuration
+```
+
+---
+
+## IPC Communication
+
+### Main Process → Renderer
+```typescript
+// Events sent from main to renderer
+ipcMain.handle('check-chrome-connection', async (_, port: number) => {
+  // Check if Chrome is running
+});
+
+ipcMain.handle('start-verification', async (_, options: VerifyOptions) => {
+  // Execute verify command
+});
+
+ipcMain.handle('start-dupdetection', async (_, options: DupDetectorOptions) => {
+  // Execute dupdetector command
+});
+
+ipcMain.handle('load-sheet', async (_, sheetUrl: string) => {
+  // Load and validate sheet
+});
+
+// Progress updates
+ipcMain.on('verification-progress', (event, progress) => {
+  event.sender.send('progress-update', progress);
+});
+```
+
+### Renderer → Main Process
+```typescript
+// From renderer
+ipcRenderer.invoke('check-chrome-connection', port);
+ipcRenderer.invoke('start-verification', options);
+ipcRenderer.invoke('start-dupdetection', options);
+ipcRenderer.invoke('load-sheet', sheetUrl);
+
+// Listen for updates
+ipcRenderer.on('progress-update', (_, progress) => {
+  // Update UI
+});
+```
+
+---
+
+## Configuration Persistence
+
+### Desktop App Config
+Store in `.ynam-tools.json`:
+```json
+{
+  "desktop": {
+    "lastSheet": "https://docs.google.com/spreadsheets/d/...",
+    "verify": {
+      "commentCol": "L",
+      "linkCol": "N",
+      "screenshotCol": "O",
+      "linkResultCol": "Q",
+      "screenshotResultCol": "R",
+      "concurrency": 1,
+      "port": 9222
+    },
+    "dupdetector": {
+      "commentCol": "P",
+      "clusterCol": "S",
+      "threshold": 85
+    }
+  }
+}
+```
+
+---
+
+## Build & Distribution
+
+### Package Scripts
+```json
+{
+  "scripts": {
+    "electron:dev": "electron .",
+    "electron:build": "electron-builder",
+    "electron:build:mac": "electron-builder --mac",
+    "electron:build:win": "electron-builder --win"
+  }
+}
+```
+
+### Electron Builder Config
+```json
+{
+  "build": {
+    "appId": "com.younet.spreadsheet-tool",
+    "productName": "YouNetAM Spreadsheet Tool",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "docs/younet-logo.png",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "icon": "docs/younet-logo.png",
+      "target": "nsis"
+    }
+  }
+}
+```
+
+---
+
+## Security Considerations
+
+- Service account credentials stored in environment variables
+- API keys never exposed to renderer process
+- IPC handlers validate all inputs
+- Sheet URLs validated before processing
+- No credential storage in desktop app UI
+
+---
+
+## Error Handling
+
+### User-Friendly Error Messages
+```
+Chrome Not Running:
+  "Chrome browser is not running in debug mode.
+   Click 'Start Chrome with Debug Mode' to launch it automatically."
+
+Sheet Permission Error:
+  "Cannot access the Google Sheet.
+   Please ensure you've shared it with: [service-account-email]"
+
+Invalid Column:
+  "Column 'XYZ' does not exist in the sheet.
+   Please select a valid column from the dropdown."
+
+API Error:
+  "Failed to connect to Gemini API.
+   Please check your GEMINI_API_KEY in the .env file."
+```
+
+---
+
+## Testing Strategy
+
+### Desktop App Testing
+- Manual UI testing for all workflows
+- IPC communication testing
+- Integration testing with actual sheets
+- Error scenario testing
+
+### CLI Testing
+- Unit tests for SimilarityService
+- Integration tests for DupDetectorCommand
+- Test with various similarity thresholds
+- Test clustering algorithm accuracy

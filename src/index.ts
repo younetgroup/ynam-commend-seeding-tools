@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { config } from 'dotenv';
 import { logger } from './utils/logger.js';
 import { VerifyCommand } from './commands/verify.js';
+import { DupDetectorCommand } from './commands/dupdetector.js';
 
 // Load environment variables
 config();
@@ -81,6 +82,60 @@ program
         exitCode = EXIT_CODES.CONNECTION_ERROR;
         logger.error('Connection Error:', err);
         logger.info('Hint: Make sure Chrome is running with --remote-debugging-port=9222');
+      } else if (message.includes('invalid') || message.includes('validation') || message.includes('format')) {
+        exitCode = EXIT_CODES.VALIDATION_ERROR;
+        logger.error('Validation Error:', err);
+        logger.info('Hint: Check your input parameters and sheet configuration');
+      } else if (message.includes('permission') || message.includes('unauthorized') || message.includes('authentication')) {
+        exitCode = EXIT_CODES.AUTHENTICATION_ERROR;
+        logger.error('Authentication Error:', err);
+        logger.info('Hint: Verify your service account has access to the Google Sheet');
+      } else {
+        logger.error('Command failed:', err);
+      }
+
+      process.exit(exitCode);
+    }
+  });
+
+// DupDetector command
+program
+  .command('dupdetector')
+  .description('Detect duplicate comments in Google Sheet')
+  .option('--sheet <url>', 'Google Sheet URL')
+  .option('--comment-col <column>', 'Column containing comments (e.g., P)')
+  .option('--cluster-col <column>', 'Column to write cluster IDs (e.g., S)')
+  .option('--threshold <number>', 'Similarity threshold 0-100 (default: 85)', '85')
+  .option('--rows <range>', 'Row range to process (e.g., 2-100)')
+  .option('--dry-run', 'Preview without making changes', false)
+  .option('--verbose', 'Show detailed output', false)
+  .option('--overwrite', 'Overwrite existing clusters', false)
+  .action(async (options) => {
+    try {
+      // Set verbose mode for logger
+      logger.setVerbose(options.verbose);
+
+      // Parse numeric options
+      const parsedOptions = {
+        ...options,
+        threshold: parseInt(options.threshold, 10)
+      };
+
+      // Execute dupdetector command
+      const dupCommand = new DupDetectorCommand();
+      await dupCommand.run(parsedOptions);
+      process.exit(EXIT_CODES.SUCCESS);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const message = err.message.toLowerCase();
+
+      // Determine exit code based on error type
+      let exitCode = EXIT_CODES.GENERAL_ERROR;
+
+      if (message.includes('environment variable') || message.includes('credentials')) {
+        exitCode = EXIT_CODES.CONFIG_ERROR;
+        logger.error('Configuration Error:', err);
+        logger.info('Hint: Check your .env file and ensure GOOGLE_SERVICE_ACCOUNT_PATH is set correctly');
       } else if (message.includes('invalid') || message.includes('validation') || message.includes('format')) {
         exitCode = EXIT_CODES.VALIDATION_ERROR;
         logger.error('Validation Error:', err);

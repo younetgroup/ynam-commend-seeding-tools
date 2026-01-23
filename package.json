@@ -2,7 +2,7 @@
   "name": "ynam-comment-verification-tool",
   "version": "1.0.0",
   "description": "CLI tool for verifying Facebook comments via Google Sheets",
-  "main": "dist/index.js",
+  "main": "dist/electron/electron/main.js",
   "type": "module",
   "bin": {
     "ynam-tools": "./dist/index.js"
@@ -10,8 +10,14 @@
   "scripts": {
     "start": "NODE_OPTIONS='--no-deprecation' tsx src/index.ts",
     "build": "tsc",
+    "build:electron": "tsc --project tsconfig.electron.json && cp -r src/renderer dist/ && cp -r src/credentials dist/",
     "test": "vitest",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "electron:dev": "npm run build:electron && electron .",
+    "electron:start": "electron .",
+    "electron:build": "npm run build:electron && electron-builder",
+    "electron:build:mac": "npm run build:electron && electron-builder --mac",
+    "electron:build:win": "npm run build:electron && electron-builder --win"
   },
   "keywords": [
     "facebook",
@@ -24,23 +30,47 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "build": {
+    "appId": "com.younet.spreadsheet-tool",
+    "productName": "YNAM Sheet Utilities",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "src/credentials/**/*"
+    ],
+    "mac": {
+      "icon": "docs/younet-logo.png",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "icon": "docs/younet-logo.png",
+      "target": "nsis"
+    }
+  },
   "dependencies": {
-    "playwright": "^1.40.0",
-    "googleapis": "^130.0.0",
     "@google/generative-ai": "^0.2.0",
-    "tesseract.js": "^5.0.0",
-    "commander": "^12.0.0",
-    "inquirer": "^9.2.0",
-    "cli-progress": "^3.12.0",
     "chalk": "^5.3.0",
-    "dotenv": "^16.4.0"
+    "cli-progress": "^3.12.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.0",
+    "googleapis": "^130.0.0",
+    "inquirer": "^9.2.0",
+    "playwright": "^1.40.0",
+    "tesseract.js": "^5.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
-    "vitest": "^1.2.0",
-    "@types/node": "^20.0.0",
-    "@types/inquirer": "^9.0.0",
     "@types/cli-progress": "^3.11.0",
-    "tsx": "^4.7.0"
+    "@types/electron": "^1.4.38",
+    "@types/inquirer": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
   }
 }

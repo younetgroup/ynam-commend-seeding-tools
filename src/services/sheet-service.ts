@@ -64,15 +64,25 @@ export class SheetService implements ISheetService {
         throw new Error('Sheet is empty');
       }
 
+      // Get raw first 2 rows for header selection
+      const row1 = rows[0] || [];
+      const row2 = rows[1] || [];
+
       const headers = rows[0] || [];
       const sampleRows = rows.slice(1, 6); // Get first 5 data rows
-      const columnLetters = this.generateColumnLetters(headers.length);
+
+      // Find the maximum number of columns across all rows (not just header)
+      // This ensures we show all columns even if header row has empty cells
+      const maxColumns = Math.max(...rows.map((row: any[]) => row.length));
+      const columnLetters = this.generateColumnLetters(maxColumns);
 
       return {
         headers,
         sampleRows,
         columnLetters,
-        totalRows: rows.length - 1 // Exclude header
+        totalRows: rows.length - 1, // Exclude header
+        row1,
+        row2
       };
     } catch (error) {
       throw new Error(
@@ -238,5 +248,83 @@ export class SheetService implements ISheetService {
     if (value === '0') return 0;
     if (value === 'ERROR') return 'ERROR';
     return null;
+  }
+
+  /**
+   * Read a single column from the sheet
+   * Returns array of {row, text} for duplication detection
+   */
+  async readColumn(
+    sheetUrl: string,
+    column: string,
+    rowRange?: { start: number; end: number }
+  ): Promise<Array<{ row: number; text: string }>> {
+    const sheetId = this.parseSheetId(sheetUrl);
+
+    // Build range string
+    const startRow = rowRange?.start || 2; // Start from row 2 (skip header)
+    const endRow = rowRange?.end || 10000; // Read up to row 10000 if no end specified
+    const range = `${column}${startRow}:${column}${endRow}`;
+
+    try {
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range
+      });
+
+      const rows = response.data.values || [];
+      const result: Array<{ row: number; text: string }> = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const text = rows[i][0] || '';
+        const rowNumber = startRow + i;
+
+        // Skip empty cells
+        if (text.trim()) {
+          result.push({
+            row: rowNumber,
+            text: text.trim()
+          });
+        }
+      }
+
+      return result;
+    } catch (error) {
+      throw new Error(
+        `Failed to read column from sheet: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Write cluster IDs to a column
+   * Takes a map of row number -> cluster ID
+   */
+  async writeColumn(
+    sheetUrl: string,
+    column: string,
+    data: Map<number, number>
+  ): Promise<void> {
+    const sheetId = this.parseSheetId(sheetUrl);
+
+    // Convert map to batch update format
+    const updates = Array.from(data.entries()).map(([rowNumber, clusterId]) => ({
+      range: `${column}${rowNumber}`,
+      values: [[`Cluster ${clusterId}`]]
+    }));
+
+    try {
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: sheetId,
+        resource: {
+          valueInputOption: 'RAW',
+          data: updates
+        }
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to write column to sheet: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 }

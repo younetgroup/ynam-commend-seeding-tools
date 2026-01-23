@@ -30,6 +30,7 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
   private ocrService: OCRService;
   private aiService: AIService;
   private screenshotCache: ScreenshotCache | null = null;
+  private stopped: boolean = false;
 
   constructor() {
     super();
@@ -37,6 +38,11 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
     this.browserService = new BrowserService();
     this.ocrService = new OCRService();
     this.aiService = new AIService();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    logger.warn('Stopping verification...');
   }
 
   async execute(options: VerifyOptions): Promise<void> {
@@ -357,21 +363,33 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
 
     // T031: Concurrency support (for now, sequential - parallel can be added later)
     for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
+      if (this.stopped) {
+        logger.warn('Verification stopped by user.');
+        break;
+      }
+
       const record = records[recordIndex];
       try {
-        // T026: Verify link
-        const linkResult = await this.verifyLink(record);
+        // T026: Verify link - skip if not a valid URL
+        let linkResult: VerificationResult | null = null;
 
-        // Write link result to sheet
-        await this.sheetService.writeResult(
-          config.sheetUrl,
-          record.rowNumber,
-          config.columnMapping.linkResult,
-          linkResult
-        );
+        if (record.commentLink && this.isValidUrl(record.commentLink)) {
+          linkResult = await this.verifyLink(record);
 
-        // Update record with result
-        record.linkResult = linkResult;
+          // Write link result to sheet
+          await this.sheetService.writeResult(
+            config.sheetUrl,
+            record.rowNumber,
+            config.columnMapping.linkResult,
+            linkResult
+          );
+
+          // Update record with result
+          record.linkResult = linkResult;
+        } else {
+          // Skip verification if link is not a valid URL
+          logger.debug(`Row ${record.rowNumber}: Skipping link verification - not a valid URL`);
+        }
 
         // T038: Verify screenshot if available
         if (config.columnMapping.screenshotResult) {
@@ -382,7 +400,8 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
             screenshotUrl = this.findScreenshotUrlForMergedRow(records, recordIndex);
           }
 
-          if (screenshotUrl) {
+          // Only proceed if screenshot URL is provided
+          if (screenshotUrl && screenshotUrl.trim()) {
             try {
               const screenshotResult = await this.verifyScreenshot(record, screenshotUrl);
 
@@ -409,6 +428,9 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
 
               record.screenshotResult = 'ERROR';
             }
+          } else {
+            // Skip screenshot verification if URL is not provided
+            logger.debug(`Row ${record.rowNumber}: Skipping screenshot verification - no URL provided`);
           }
         }
 
@@ -601,6 +623,18 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
       // T040: Handle download/processing errors
       logger.debug(`Failed to verify screenshot: ${error instanceof Error ? error.message : String(error)}`);
       return 'ERROR';
+    }
+  }
+
+  /**
+   * Check if string is a valid URL
+   */
+  private isValidUrl(urlString: string): boolean {
+    try {
+      const url = new URL(urlString);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
     }
   }
 

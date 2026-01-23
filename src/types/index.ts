@@ -36,6 +36,8 @@ export interface SheetPreview {
   sampleRows: string[][];
   columnLetters: string[];
   totalRows: number;
+  row1: string[];
+  row2: string[];
 }
 
 export interface ResultStats {
@@ -138,4 +140,36 @@ export interface ITextMatcher {
 
 export interface IVerifyCommand {
   execute(options: VerifyOptions): Promise<void>;
+}
+
+// ============================================================================
+// Duplication Detection Types
+// ============================================================================
+
+export interface DupDetectorOptions {
+  sheet?: string;
+  commentCol?: string;
+  clusterCol?: string;
+  threshold?: number;
+  rows?: string;
+  dryRun?: boolean;
+  verbose?: boolean;
+  overwrite?: boolean;
+}
+
+export interface ClusterResult {
+  clusterId: number;
+  comments: Array<{
+    row: number;
+    text: string;
+  }>;
+  avgSimilarity: number;
+}
+
+export interface DupDetectionStats {
+  totalComments: number;
+  uniqueComments: number;
+  duplicateClusters: number;
+  largestClusterSize: number;
+  threshold: number;
 }
