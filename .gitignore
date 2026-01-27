@@ -50,3 +50,4 @@ reports/
 # Service account credentials (bundled with app)
 yng-gcp-api-experiment-*.json
 src/credentials/*.json
+dist-electron/

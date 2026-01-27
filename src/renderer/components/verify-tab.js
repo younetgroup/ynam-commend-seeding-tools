@@ -23,11 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (result.success) {
       chromeStatus.textContent = '✓ Chrome connected on port ' + port;
-      chromeStatus.className = 'chrome-status-indicator success';
+      chromeStatus.className = 'chrome-status-indicator connected';
       startVerifyBtn.disabled = false;
     } else {
       chromeStatus.textContent = '⚠ Chrome not running on port ' + port;
-      chromeStatus.className = 'chrome-status-indicator error';
+      chromeStatus.className = 'chrome-status-indicator not-connected';
       startVerifyBtn.disabled = true;
     }
   }
@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 3000);
     } else {
       chromeStatus.textContent = `Error starting Chrome: ${result.error}`;
-      chromeStatus.className = 'chrome-status-indicator error';
+      chromeStatus.className = 'chrome-status-indicator not-connected';
       startChromeBtn.classList.remove('loading');
       startChromeBtn.disabled = false;
     }
@@ -72,8 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
       concurrency: parseInt(document.getElementById('verify-concurrency').value),
       verbose: document.getElementById('verify-verbose').checked,
       overwrite: document.getElementById('verify-overwrite').checked,
-      dryRun: document.getElementById('verify-dry-run').checked,
-      port: parseInt(document.getElementById('verify-port').value)
+      port: parseInt(document.getElementById('verify-port').value),
+      headerRow: window.appState.headerRow
     };
 
     startVerifyBtn.classList.add('hidden');
@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
       progressSection.appendChild(logContainer);
     }
     logContainer.innerHTML = ''; // Clear logs
-    
+
     if (options.verbose) {
       logContainer.classList.remove('hidden');
     } else {
@@ -102,20 +102,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Listen for log updates
     window.electronAPI.onLogUpdate((log) => {
       if (!logContainer) return;
-      
+
       const entry = document.createElement('div');
       entry.className = `log-entry log-type-${log.type}`;
-      
+
       // Simple timestamp
       const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      
+
       // Icons for types
       let icon = '';
       if (log.type === 'success') icon = '✓ ';
       if (log.type === 'error') icon = '✗ ';
       if (log.type === 'warn') icon = '⚠ ';
       if (log.type === 'info') icon = 'ℹ ';
-      
+
       entry.textContent = `[${time}] ${icon}${log.message}`;
       logContainer.appendChild(entry);
       logContainer.scrollTop = logContainer.scrollHeight;
@@ -168,7 +168,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function onVerificationComplete() {
     startVerifyBtn.classList.remove('hidden');
+    startVerifyBtn.disabled = false;
     stopVerifyBtn.classList.add('hidden');
+
+    // Show completion message
+    progressStatus.textContent = '✅ Verification Complete!';
+    progressFill.style.width = '100%';
+    chromeStatus.textContent = '✓ Verification finished. Chrome still connected.';
+    chromeStatus.className = 'chrome-status-indicator connected';
+
     window.electronAPI.removeProgressListener();
     window.electronAPI.removeLogListener();
   }

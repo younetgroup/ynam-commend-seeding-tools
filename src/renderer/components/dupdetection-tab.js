@@ -47,10 +47,12 @@ document.addEventListener('DOMContentLoaded', () => {
       sheet: window.appState.sheetUrl,
       commentCol: document.getElementById('dup-comment-col').value,
       clusterCol: document.getElementById('dup-cluster-col').value,
+      clusterRowsCol: document.getElementById('dup-cluster-rows-col').value,
       threshold: parseInt(thresholdSlider.value),
       rows: document.getElementById('dup-rows').value,
       verbose: document.getElementById('dup-verbose').checked,
-      dryRun: document.getElementById('dup-dry-run').checked
+      dryRun: document.getElementById('dup-dry-run').checked,
+      headerRow: window.appState.headerRow
     };
 
     startDupBtn.classList.add('hidden');
@@ -60,6 +62,53 @@ document.addEventListener('DOMContentLoaded', () => {
     progressStatus.textContent = 'Starting detection...';
     summary.innerHTML = '';
     clustersList.innerHTML = '';
+
+    // Log Container Handling
+    let logContainer = document.getElementById('dup-logs-container');
+    if (!logContainer) {
+      logContainer = document.createElement('div');
+      logContainer.id = 'dup-logs-container';
+      logContainer.className = 'dup-logs hidden';
+
+      if (summary && summary.parentNode === progressSection) {
+        progressSection.insertBefore(logContainer, summary);
+      } else {
+        progressSection.appendChild(logContainer);
+      }
+    }
+    logContainer.innerHTML = '';
+
+    if (options.verbose) {
+      logContainer.classList.remove('hidden');
+    } else {
+      logContainer.classList.add('hidden');
+    }
+
+    if (options.verbose) {
+      window.electronAPI.onLogUpdate((log) => {
+        if (!logContainer) return;
+
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-type-${log.type}`;
+
+        const time = new Date().toLocaleTimeString('en-US', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+
+        let icon = '';
+        if (log.type === 'success') icon = '✓ ';
+        if (log.type === 'error') icon = '✗ ';
+        if (log.type === 'warn') icon = '⚠ ';
+        if (log.type === 'info') icon = 'ℹ ';
+
+        entry.textContent = `[${time}] ${icon}${log.message}`;
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+      });
+    }
 
     // Listen for progress updates
     window.electronAPI.onProgressUpdate((progress) => {
@@ -150,8 +199,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function onDetectionComplete() {
     startDupBtn.classList.remove('hidden');
+    startDupBtn.disabled = false;
     stopDupBtn.classList.add('hidden');
+
+    // Show completion message
+    progressStatus.textContent = '✅ Detection Complete!';
+    progressFill.style.width = '100%';
+
     window.electronAPI.removeProgressListener();
+    window.electronAPI.removeLogListener();
   }
 
   function onDetectionError(error) {

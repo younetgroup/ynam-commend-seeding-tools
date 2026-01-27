@@ -10,7 +10,7 @@ import { VerifyCommand } from '../commands/verify.js';
 import { DupDetectorCommand } from '../commands/dupdetector.js';
 import { configService } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,7 +20,21 @@ const __dirname = path.dirname(__filename);
 
 let verifyCommand: VerifyCommand | null = null;
 let dupCommand: DupDetectorCommand | null = null;
-let logListener: ((log: any) => void) | null = null;
+let verifyLogListener: ((log: any) => void) | null = null;
+let dupLogListener: ((log: any) => void) | null = null;
+let chromeProcess: ChildProcess | null = null;
+
+export function cleanupProcesses() {
+  if (chromeProcess) {
+    try {
+      chromeProcess.kill();
+      console.log('Killed managed Chrome process');
+    } catch (err) {
+      console.error('Error killing Chrome process:', err);
+    }
+    chromeProcess = null;
+  }
+}
 
 /**
  * Get the path to bundled credentials file
@@ -28,11 +42,11 @@ let logListener: ((log: any) => void) | null = null;
  */
 function getCredentialsPath(): string {
   // In development: dist/credentials/service-account.json
-  // In production (packaged): resources/dist/credentials/service-account.json
+  // In production (packaged): resources/credentials/service-account.json
 
   if (app.isPackaged) {
-    // Production: resources are in app.asar
-    return path.join(process.resourcesPath, 'dist', 'credentials', 'service-account.json');
+    // Production: extraResources are at process.resourcesPath directly
+    return path.join(process.resourcesPath, 'credentials', 'service-account.json');
   } else {
     // Development: relative to the compiled ipc-handlers.js
     return path.join(__dirname, '../../credentials/service-account.json');
@@ -109,19 +123,25 @@ export function setupIpcHandlers() {
       // Detect platform and start Chrome with debug port
       const platform = process.platform;
       let chromePath = '';
+      let userDataDir = '';
 
       if (platform === 'darwin') {
         chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+        userDataDir = '/tmp/chrome-debug';
       } else if (platform === 'win32') {
         chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        // Use Windows temp directory
+        userDataDir = path.join(process.env.TEMP || process.env.TMP || 'C:\\Windows\\Temp', 'chrome-debug');
       } else {
         chromePath = 'google-chrome';
+        userDataDir = '/tmp/chrome-debug';
       }
 
-      spawn(chromePath, ['--remote-debugging-port=9222', '--user-data-dir=/tmp/chrome-debug'], {
-        detached: true,
+      chromeProcess = spawn(chromePath, ['--remote-debugging-port=9222', `--user-data-dir=${userDataDir}`], {
+        detached: false,
         stdio: 'ignore'
-      }).unref();
+      });
+      chromeProcess.unref(); // Still unref to let parent exit independently if needed, but we track it now
 
       // Wait a bit for Chrome to start
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -140,30 +160,32 @@ export function setupIpcHandlers() {
     try {
       verifyCommand = new VerifyCommand();
 
+      logger.setVerbose(!!options?.verbose);
+
       // Clean up previous listener if any
-      if (logListener) {
-        logger.removeListener(logListener);
-        logListener = null;
+      if (verifyLogListener) {
+        logger.removeListener(verifyLogListener);
+        verifyLogListener = null;
       }
 
       // Setup log listener
-      logListener = (log) => {
+      verifyLogListener = (log) => {
         event.sender.send('log-update', log);
       };
-      logger.addListener(logListener);
+      logger.addListener(verifyLogListener);
 
       // Execute in background and stream progress
       verifyCommand.execute(options)
         .then(() => {
-          if (logListener) {
-            logger.removeListener(logListener);
-            logListener = null;
+          if (verifyLogListener) {
+            logger.removeListener(verifyLogListener);
+            verifyLogListener = null;
           }
         })
         .catch(error => {
-          if (logListener) {
-            logger.removeListener(logListener);
-            logListener = null;
+          if (verifyLogListener) {
+            logger.removeListener(verifyLogListener);
+            verifyLogListener = null;
           }
           event.sender.send('progress-update', {
             status: 'error',
@@ -181,9 +203,9 @@ export function setupIpcHandlers() {
   });
 
   ipcMain.handle('stop-verification', async () => {
-    if (logListener) {
-      logger.removeListener(logListener);
-      logListener = null;
+    if (verifyLogListener) {
+      logger.removeListener(verifyLogListener);
+      verifyLogListener = null;
     }
     if (verifyCommand) {
       verifyCommand.stop();
@@ -193,7 +215,7 @@ export function setupIpcHandlers() {
       // For safety, we can keep the reference until next start, or just clear it.
       // If we clear it here, the execute() promise might still be running but we lose reference.
       // Better to let it finish.
-      
+
       // Give it a moment to stop
       await new Promise(resolve => setTimeout(resolve, 500));
       verifyCommand = null;
@@ -206,18 +228,43 @@ export function setupIpcHandlers() {
     try {
       dupCommand = new DupDetectorCommand();
 
+      logger.setVerbose(!!options?.verbose);
+
       // Set up progress listener
       dupCommand.onProgress((progress) => {
         event.sender.send('progress-update', progress);
       });
 
+      if (dupLogListener) {
+        logger.removeListener(dupLogListener);
+        dupLogListener = null;
+      }
+
+      if (options?.verbose) {
+        dupLogListener = (log) => {
+          event.sender.send('log-update', log);
+        };
+        logger.addListener(dupLogListener);
+      }
+
       // Execute in background and stream progress
-      dupCommand.execute(options).catch(error => {
-        event.sender.send('progress-update', {
-          status: 'error',
-          error: error instanceof Error ? error.message : String(error)
+      dupCommand.execute(options)
+        .then(() => {
+          if (dupLogListener) {
+            logger.removeListener(dupLogListener);
+            dupLogListener = null;
+          }
+        })
+        .catch(error => {
+          if (dupLogListener) {
+            logger.removeListener(dupLogListener);
+            dupLogListener = null;
+          }
+          event.sender.send('progress-update', {
+            status: 'error',
+            error: error instanceof Error ? error.message : String(error)
+          });
         });
-      });
 
       return { success: true };
     } catch (error) {
@@ -229,6 +276,13 @@ export function setupIpcHandlers() {
   });
 
   ipcMain.handle('stop-dupdetection', async () => {
+    if (dupLogListener) {
+      logger.removeListener(dupLogListener);
+      dupLogListener = null;
+    }
+    if (dupCommand) {
+      dupCommand.stop();
+    }
     dupCommand = null;
     return { success: true };
   });

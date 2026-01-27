@@ -31,6 +31,28 @@ document.addEventListener('DOMContentLoaded', () => {
       targetPane.classList.add('active');
     });
   });
+
+  // Back to Setup button handler
+  const backToSetupBtn = document.getElementById('back-to-setup-btn');
+  if (backToSetupBtn) {
+    backToSetupBtn.addEventListener('click', () => {
+      const setupScreen = document.getElementById('setup-screen');
+      const mainScreen = document.getElementById('main-screen');
+
+      if (mainScreen && setupScreen) {
+        mainScreen.classList.remove('active');
+        mainScreen.classList.add('hidden');
+
+        setupScreen.classList.add('active');
+        setupScreen.classList.remove('hidden');
+
+        // If we have existing sheet data, show the header selection
+        if (window.appState.sheetMetadata && window.showExistingHeaderSelection) {
+          window.showExistingHeaderSelection();
+        }
+      }
+    });
+  }
 });
 
 // Utility functions
@@ -231,25 +253,40 @@ if (window.electronAPI) {
     );
   });
 
-  // Show README
+  // Show Help Guide
   window.electronAPI.onMenuEvent('show-readme', () => {
-    const readmeContent = `
-      <h4>YNAM Sheet Utilities</h4>
-      <p><strong>Features:</strong></p>
-      <ul style="text-align: left; margin: 12px 0;">
-        <li>Verify Seeding: Automated comment verification with browser automation</li>
-        <li>Duplication Detection: Find similar comments using fuzzy text matching</li>
-      </ul>
-      <p><strong>Getting Started:</strong></p>
-      <ol style="text-align: left; margin: 12px 0;">
-        <li>Share your Google Sheet with the service account</li>
-        <li>Load the sheet in the setup screen</li>
-        <li>Configure column mappings for your workflow</li>
-        <li>Start processing!</li>
-      </ol>
-      <p>For detailed documentation, see the DESKTOP-APP-README.md file.</p>
+    const helpContent = `
+      <div style="font-size: 13px; line-height: 1.6; color: #333;">
+        <h4 style="margin-top:0; border-bottom:1px solid #eee; padding-bottom:8px;">Getting Started</h4>
+        <ol style="padding-left: 20px; margin-bottom: 16px;">
+          <li><strong>Setup Connection:</strong> Copy the Service Account Email from the Setup screen and share your Google Sheet with it (Editor access).</li>
+          <li><strong>Load Sheet:</strong> Paste the full Google Sheet URL and click "Load Sheet".</li>
+          <li><strong>Select Header:</strong> Choose the row that contains your column headers.</li>
+        </ol>
+
+        <h4 style="margin-top:16px; border-bottom:1px solid #eee; padding-bottom:8px;">Features</h4>
+        
+        <div style="margin-bottom:12px;">
+          <strong>1. Verify Seeding</strong>
+          <p style="margin:4px 0 8px 0; color:#666;">Automates the verification of Facebook comments using Chrome automation.</p>
+          <ul style="padding-left: 20px; color:#555;">
+            <li><strong>Column Mapping:</strong> Map your sheet columns to the tool's required fields (Comment, Link, Screenshot).</li>
+            <li><strong>Browser:</strong> Click "Launch Chrome Debug" to open a controlled browser instance.</li>
+            <li><strong>Run:</strong> Click "Start Verification" to process rows automatically.</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <strong>2. Duplication Detection</strong>
+          <p style="margin:4px 0 8px 0; color:#666;">Detects similar comments to avoid spamming.</p>
+          <ul style="padding-left: 20px; color:#555;">
+            <li><strong>Configuration:</strong> Select the comment column and a column to output cluster IDs.</li>
+            <li><strong>Threshold:</strong> Adjust the similarity percentage (85% is recommended).</li>
+          </ul>
+        </div>
+      </div>
     `;
-    window.utils.showInfo('Quick Start Guide', readmeContent);
+    window.utils.showInfo('YNG Tool Help Guide', helpContent);
   });
 
   // Show about
@@ -258,7 +295,7 @@ if (window.electronAPI) {
     const aboutContent = `
       <div style="text-align: center;">
         <p><strong>Version:</strong> ${version}</p>
-        <p><strong>Developed for:</strong> YNAM</p>
+        <p><strong>Developed for:</strong> YNG</p>
         <p style="margin-top: 16px;">Built with Electron, TypeScript, and modern web technologies.</p>
         <p style="margin-top: 12px; font-size: 0.9rem; color: #666;">
           Features fuzzy text matching for Vietnamese comments,<br>
@@ -267,6 +304,6 @@ if (window.electronAPI) {
         </p>
       </div>
     `;
-    window.utils.showInfo('About YNAM Sheet Utilities', aboutContent);
+    window.utils.showInfo('About YNG Sheet Utilities', aboutContent);
   });
 };

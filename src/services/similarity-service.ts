@@ -105,17 +105,32 @@ export class SimilarityService {
   async clusterComments(
     comments: CommentData[],
     threshold: number,
-    onProgress?: (current: number, total: number) => void
-  ): Promise<Map<number, number>> {
+    options: {
+      onProgress?: (currentRow: number, totalRows: number, rowNumber: number) => void;
+      shouldStop?: () => boolean;
+      logComparisons?: boolean;
+      yieldEvery?: number;
+    } = {}
+  ): Promise<Map<number, number> | null> {
     const clusters = new Map<number, number>(); // row -> cluster ID
     let currentClusterId = 1;
     let comparisonsDone = 0;
     const totalComparisons = (comments.length * (comments.length - 1)) / 2;
+    const yieldEvery = options.yieldEvery ?? 500;
+    const shouldStop = options.shouldStop;
 
     logger.info(`Starting clustering with threshold ${threshold}% for ${comments.length} comments`);
     logger.info(`Total comparisons needed: ${totalComparisons}`);
 
     for (let i = 0; i < comments.length; i++) {
+      if (shouldStop?.()) {
+        return null;
+      }
+
+      if (options.onProgress) {
+        options.onProgress(i + 1, comments.length, comments[i].row);
+      }
+
       // Skip if already in a cluster
       if (clusters.has(comments[i].row)) {
         continue;
@@ -125,6 +140,10 @@ export class SimilarityService {
 
       // Compare with remaining comments
       for (let j = i + 1; j < comments.length; j++) {
+        if (shouldStop?.()) {
+          return null;
+        }
+
         // Skip if already in a cluster
         if (clusters.has(comments[j].row)) {
           continue;
@@ -138,15 +157,22 @@ export class SimilarityService {
 
           comparisonsDone++;
 
-          if (onProgress) {
-            onProgress(comparisonsDone, totalComparisons);
+          if (yieldEvery > 0 && comparisonsDone % yieldEvery === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+            if (shouldStop?.()) {
+              return null;
+            }
           }
 
-          logger.debug(`Comparing row ${comments[i].row} with ${comments[j].row}: ${similarity}%`);
+          if (options.logComparisons) {
+            logger.debug(`Comparing row ${comments[i].row} with ${comments[j].row}: ${similarity}%`);
+          }
 
           if (similarity >= threshold) {
             cluster.push(comments[j].row);
-            logger.debug(`Added row ${comments[j].row} to cluster ${currentClusterId} (similarity: ${similarity}%)`);
+            if (options.logComparisons) {
+              logger.debug(`Added row ${comments[j].row} to cluster ${currentClusterId} (similarity: ${similarity}%)`);
+            }
           }
         } catch (error) {
           logger.error(`Failed to compare comments at rows ${comments[i].row} and ${comments[j].row}: ${error}`);

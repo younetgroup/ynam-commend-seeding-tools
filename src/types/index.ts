@@ -38,6 +38,8 @@ export interface SheetPreview {
   totalRows: number;
   row1: string[];
   row2: string[];
+  row3?: string[];
+  sheetName?: string;
 }
 
 export interface ResultStats {
@@ -80,6 +82,7 @@ export interface VerifyOptions {
   interval?: number;
   report?: boolean;
   port?: number;
+  headerRow?: number;
 }
 
 // ============================================================================
@@ -97,10 +100,19 @@ export interface IBrowserService {
 export interface ISheetService {
   initialize(credentialsPath: string): Promise<void>;
   getPreview(sheetUrl: string, sheetName?: string): Promise<SheetPreview>;
+  readColumn(
+    sheetUrl: string,
+    column: string,
+    rowRange?: { start: number; end: number },
+    sheetName?: string,
+    headerRow?: number
+  ): Promise<Array<{ row: number; text: string }>>;
   readRecords(
     sheetUrl: string,
     mapping: ColumnMapping,
-    rowRange?: { start: number; end: number }
+    rowRange?: { start: number; end: number },
+    sheetName?: string,
+    headerRow?: number
   ): Promise<CommentRecord[]>;
   writeResult(
     sheetUrl: string,
@@ -150,11 +162,13 @@ export interface DupDetectorOptions {
   sheet?: string;
   commentCol?: string;
   clusterCol?: string;
+  clusterRowsCol?: string;
   threshold?: number;
   rows?: string;
   dryRun?: boolean;
   verbose?: boolean;
   overwrite?: boolean;
+  headerRow?: number;
 }
 
 export interface ClusterResult {

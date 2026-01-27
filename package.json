@@ -1,23 +1,23 @@
 {
-  "name": "ynam-comment-verification-tool",
+  "name": "yng-sheet-utilities",
   "version": "1.0.0",
   "description": "CLI tool for verifying Facebook comments via Google Sheets",
   "main": "dist/electron/electron/main.js",
   "type": "module",
   "bin": {
-    "ynam-tools": "./dist/index.js"
+    "yng-tools": "./dist/index.js"
   },
   "scripts": {
     "start": "NODE_OPTIONS='--no-deprecation' tsx src/index.ts",
     "build": "tsc",
-    "build:electron": "tsc --project tsconfig.electron.json && cp -r src/renderer dist/ && cp -r src/credentials dist/",
+    "build:electron": "tsc --project tsconfig.electron.json && cp -r src/renderer dist/ && cp -r src/credentials dist/ && cp docs/YNG-logo-STool.png dist/renderer/ && cp docs/younet-logo.png dist/renderer/",
     "test": "vitest",
     "lint": "tsc --noEmit",
     "electron:dev": "npm run build:electron && electron .",
     "electron:start": "electron .",
     "electron:build": "npm run build:electron && electron-builder",
     "electron:build:mac": "npm run build:electron && electron-builder --mac",
-    "electron:build:win": "npm run build:electron && electron-builder --win"
+    "electron:build:win": "npm run build:electron && electron-builder --win --x64"
   },
   "keywords": [
     "facebook",
@@ -31,24 +31,41 @@
     "node": ">=18.0.0"
   },
   "build": {
-    "appId": "com.younet.spreadsheet-tool",
-    "productName": "YNAM Sheet Utilities",
+    "appId": "com.younet.yng-sheet-utilities",
+    "productName": "YNG STool",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
-      "dist/**/*",
+      "dist/electron/**/*",
+      "dist/renderer/**/*",
+      "dist/commands/**/*",
+      "dist/services/**/*",
+      "dist/utils/**/*",
+      "dist/types/**/*",
       "node_modules/**/*",
-      "package.json",
-      "src/credentials/**/*"
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "docs",
+        "to": "docs"
+      },
+      {
+        "from": "dist/credentials",
+        "to": "credentials"
+      }
     ],
     "mac": {
-      "icon": "docs/younet-logo.png",
+      "icon": "docs/YNG-logo-STool.png",
       "category": "public.app-category.productivity"
     },
     "win": {
-      "icon": "docs/younet-logo.png",
-      "target": "nsis"
+      "icon": "docs/YNG-logo-STool.png",
+      "target": [
+        "nsis",
+        "zip"
+      ]
     }
   },
   "dependencies": {
@@ -64,7 +81,6 @@
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.0",
-    "@types/electron": "^1.4.38",
     "@types/inquirer": "^9.0.0",
     "@types/node": "^20.0.0",
     "electron": "^40.0.0",

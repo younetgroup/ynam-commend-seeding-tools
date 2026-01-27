@@ -18,11 +18,16 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
   private sheetService: SheetService;
   private similarityService: SimilarityService;
   private eventEmitter: EventEmitter = new EventEmitter();
+  private stopped = false;
 
   constructor() {
     super();
     this.sheetService = new SheetService();
     this.similarityService = new SimilarityService();
+  }
+
+  stop(): void {
+    this.stopped = true;
   }
 
   onProgress(callback: (progress: any) => void): void {
@@ -46,8 +51,15 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
       const comments = await this.sheetService.readColumn(
         config.sheetUrl,
         config.commentCol,
-        config.rowRange
+        config.rowRange,
+        undefined,
+        options.headerRow
       );
+
+      if (this.stopped) {
+        this.emitProgress({ status: 'stopped', message: 'Detection stopped' });
+        return;
+      }
 
       if (comments.length === 0) {
         logger.warn('No comments found in the specified column');
@@ -68,9 +80,18 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
 
       // Perform clustering
       const clusters = await this.performClustering(comments, config.threshold);
+      if (!clusters) {
+        this.emitProgress({ status: 'stopped', message: 'Detection stopped' });
+        return;
+      }
 
       // Write results to sheet
       if (!config.dryRun) {
+        if (this.stopped) {
+          this.emitProgress({ status: 'stopped', message: 'Detection stopped' });
+          return;
+        }
+
         logger.info(`Writing cluster IDs to column ${config.clusterCol}...`);
         this.emitProgress({
           message: 'Writing results to sheet...',
@@ -81,7 +102,37 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
           config.clusterCol,
           clusters
         );
-        logger.success('Cluster IDs written to sheet');
+
+        // Write cluster rows if column specified
+        if (config.clusterRowsCol) {
+          logger.info(`Writing cluster rows to column ${config.clusterRowsCol}...`);
+
+          // Group rows by cluster
+          const clusterRowsMap = new Map<number, string>(); // row -> row summary string
+          const clusterIdToRows = new Map<number, number[]>();
+
+          clusters.forEach((clusterId, row) => {
+            if (!clusterIdToRows.has(clusterId)) {
+              clusterIdToRows.set(clusterId, []);
+            }
+            clusterIdToRows.get(clusterId)!.push(row);
+          });
+
+          // Create summary strings for each row
+          clusters.forEach((clusterId, row) => {
+            const rowsInCluster = clusterIdToRows.get(clusterId) || [];
+            // Remove the ' prefix as requested by user
+            clusterRowsMap.set(row, `${rowsInCluster.join(', ')}`);
+          });
+
+          await this.sheetService.batchWriteColumnData(
+            config.sheetUrl,
+            config.clusterRowsCol,
+            clusterRowsMap
+          );
+        }
+
+        logger.success('Results written to sheet');
       }
 
       // Display summary
@@ -138,13 +189,16 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
     sheetUrl: string;
     commentCol: string;
     clusterCol: string;
+    clusterRowsCol?: string;
     threshold: number;
     rowRange?: { start: number; end: number };
     dryRun: boolean;
+    headerRow?: number;
   }> {
     let sheetUrl = options.sheet;
     let commentCol = options.commentCol;
     let clusterCol = options.clusterCol;
+    let clusterRowsCol = options.clusterRowsCol;
     let threshold = options.threshold;
 
     // Load saved config
@@ -180,6 +234,12 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
         },
         {
           type: 'input',
+          name: 'clusterRowsCol',
+          message: 'Column to write cluster rows (optional, e.g., T):',
+          default: ''
+        },
+        {
+          type: 'input',
           name: 'threshold',
           message: 'Similarity threshold (0-100%):',
           default: '85',
@@ -196,6 +256,7 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
       sheetUrl = answers.sheetUrl;
       commentCol = answers.commentCol;
       clusterCol = answers.clusterCol;
+      clusterRowsCol = answers.clusterRowsCol;
       threshold = parseInt(answers.threshold, 10);
     }
 
@@ -220,45 +281,61 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
       sheetUrl: sheetUrl!,
       commentCol,
       clusterCol,
+      clusterRowsCol: clusterRowsCol || undefined,
       threshold,
       rowRange,
-      dryRun: options.dryRun || false
+      dryRun: options.dryRun || false,
+      headerRow: options.headerRow
     };
   }
 
   private async performClustering(
     comments: CommentData[],
     threshold: number
-  ): Promise<Map<number, number>> {
+  ): Promise<Map<number, number> | null> {
     logger.info(`Starting similarity clustering with ${threshold}% threshold...`);
 
     // Create progress bar
     const progressBar = new cliProgress.SingleBar({
-      format: chalk.cyan('{bar}') + ' | {percentage}% | {value}/{total} comparisons',
+      format: chalk.cyan('{bar}') + ' | {percentage}% | {value}/{total} rows',
       barCompleteChar: '\u2588',
       barIncompleteChar: '\u2591',
       hideCursor: true
     });
 
-    const totalComparisons = (comments.length * (comments.length - 1)) / 2;
-    progressBar.start(totalComparisons, 0);
+    progressBar.start(comments.length, 0);
 
     // Perform clustering with progress updates
     const clusters = await this.similarityService.clusterComments(
       comments,
       threshold,
-      (current, total) => {
-        progressBar.update(current);
-        // Emit progress for Electron
-        const percentage = 10 + Math.round((current / total) * 80);
-        this.emitProgress({
-          message: `Comparing comments: ${current}/${total}`,
-          percentage
-        });
+      {
+        onProgress: (currentRow, totalRows) => {
+          progressBar.update(currentRow);
+
+          if (this.stopped) {
+            return;
+          }
+
+          const percentage = 10 + Math.round((currentRow / totalRows) * 80);
+          this.emitProgress({
+            message: `Processing row ${currentRow}/${totalRows}`,
+            percentage
+          });
+
+          logger.verbose(`Processing row ${currentRow}/${totalRows}`);
+        },
+        shouldStop: () => this.stopped,
+        logComparisons: false,
+        yieldEvery: 500
       }
     );
 
     progressBar.stop();
+    if (!clusters) {
+      logger.warn('Detection stopped by user');
+      return null;
+    }
     logger.success('Clustering complete');
 
     return clusters;
@@ -283,6 +360,9 @@ export class DupDetectorCommand extends BaseCommand<DupDetectorOptions> {
 
     // Perform clustering
     const clusters = await this.performClustering(comments, config.threshold);
+    if (!clusters) {
+      return;
+    }
 
     // Display summary
     this.displaySummary(comments, clusters, config.threshold);

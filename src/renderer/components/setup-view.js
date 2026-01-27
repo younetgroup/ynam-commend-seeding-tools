@@ -9,6 +9,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sheetUrlInput = document.getElementById('sheet-url-input');
   const loadSheetBtn = document.getElementById('load-sheet-btn');
   const setupStatus = document.getElementById('setup-status');
+  const headerSelectionCard = document.getElementById('header-selection-card');
+  const continueBtn = document.getElementById('continue-to-main-btn');
+  const setupInstructionsCard = document.getElementById('setup-instructions-card');
+  const setupCardHeader = document.getElementById('setup-card-header');
 
   // Load saved config
   let savedConfig = null;
@@ -42,28 +46,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 2000);
   });
 
+  // Collapsible card header click
+  if (setupCardHeader) {
+    setupCardHeader.addEventListener('click', () => {
+      setupInstructionsCard.classList.toggle('collapsed');
+    });
+  }
+
+  // Hide header selection when URL changes
+  sheetUrlInput.addEventListener('input', () => {
+    if (headerSelectionCard && !headerSelectionCard.classList.contains('hidden')) {
+      headerSelectionCard.classList.add('hidden');
+      // Expand the instructions card
+      setupInstructionsCard.classList.remove('collapsed');
+      // Reset status
+      setupStatus.className = 'status-message';
+      setupStatus.textContent = '';
+      // Re-enable load button
+      loadSheetBtn.classList.remove('loading');
+      loadSheetBtn.disabled = false;
+    }
+  });
+
   // Load sheet
   loadSheetBtn.addEventListener('click', async () => {
     const url = sheetUrlInput.value.trim();
 
     if (!url) {
-      utils.showStatus('setup-status', 'Please enter a Google Sheet URL', 'error');
+      showStatus('Please enter a Google Sheet URL', 'error');
       return;
     }
 
     if (!url.includes('docs.google.com/spreadsheets')) {
-      utils.showStatus('setup-status', 'Invalid Google Sheet URL', 'error');
+      showStatus('Invalid Google Sheet URL', 'error');
       return;
     }
 
     loadSheetBtn.classList.add('loading');
     loadSheetBtn.disabled = true;
-    utils.showStatus('setup-status', 'Checking permissions...', 'info');
+    showStatus('Checking permissions...', 'info');
 
     try {
       const result = await window.electronAPI.loadSheet(url);
 
       if (result.success) {
+        // Update app state with new sheet data
         window.appState.sheetUrl = url;
         window.appState.sheetMetadata = result.metadata;
 
@@ -73,80 +100,108 @@ document.addEventListener('DOMContentLoaded', async () => {
         await window.electronAPI.saveConfig(config);
         window.appState.savedConfig = config;
 
-        utils.showStatus('setup-status', 'Sheet loaded successfully!', 'success');
+        showStatus('Sheet loaded successfully! Select header row below.', 'success');
 
-        setTimeout(() => {
-          showHeaderSelectionDialog();
-        }, 1000);
+        // Show inline header selection
+        showHeaderSelection(result.metadata);
+
+        // Collapse the instructions card to make room
+        setupInstructionsCard.classList.add('collapsed');
       } else {
-        utils.showStatus('setup-status', `Error: ${result.error}`, 'error');
+        showStatus(`Error: ${result.error}`, 'error');
         loadSheetBtn.classList.remove('loading');
         loadSheetBtn.disabled = false;
       }
     } catch (error) {
-      utils.showStatus('setup-status', `Error: ${error.message}`, 'error');
+      showStatus(`Error: ${error.message}`, 'error');
       loadSheetBtn.classList.remove('loading');
       loadSheetBtn.disabled = false;
     }
   });
 
-  function showHeaderSelectionDialog() {
-    const setupScreen = document.getElementById('setup-screen');
-    const headerDialog = document.getElementById('header-selection-dialog');
-    const metadata = window.appState.sheetMetadata;
+  function showStatus(message, type) {
+    setupStatus.textContent = message;
+    setupStatus.className = `status-message ${type}`;
+  }
 
-    // Hide setup screen
-    setupScreen.classList.remove('active');
-    setupScreen.classList.add('hidden');
+  function showHeaderSelection(metadata) {
+    const preview1 = document.getElementById('header-preview-1');
+    const preview2 = document.getElementById('header-preview-2');
+    const preview3 = document.getElementById('header-preview-3');
 
-    // Show header selection dialog
-    headerDialog.classList.remove('hidden');
-    headerDialog.classList.add('active');
+    // Clear and populate previews
+    preview1.innerHTML = '';
+    preview2.innerHTML = '';
+    preview3.innerHTML = '';
 
-    // Populate header previews
-    document.getElementById('header-preview-1').textContent = metadata.row1.slice(0, 10).join(' | ');
-    document.getElementById('header-preview-2').textContent = metadata.row2.slice(0, 10).join(' | ');
+    requestAnimationFrame(() => {
+      const row1Preview = metadata.row1 ? metadata.row1.slice(0, 8).join(' | ') : 'No data';
+      const row2Preview = metadata.row2 ? metadata.row2.slice(0, 8).join(' | ') : 'No data';
+      // Row 3 - we might need to fetch this or use row2 shifted
+      const row3Preview = metadata.row3 ? metadata.row3.slice(0, 8).join(' | ') : '(Row 3 data not available)';
 
-    // Add confirm button handler
-    const confirmBtn = document.getElementById('confirm-header-btn');
-    confirmBtn.onclick = () => {
+      preview1.textContent = row1Preview || 'Empty row';
+      preview2.textContent = row2Preview || 'Empty row';
+      preview3.textContent = row3Preview || 'Empty row';
+    });
+
+    // Show the card (using hidden class, not visible)
+    headerSelectionCard.classList.remove('hidden');
+  }
+
+  // Expose function to show header selection when returning from main screen
+  window.showExistingHeaderSelection = function () {
+    if (window.appState.sheetMetadata) {
+      showHeaderSelection(window.appState.sheetMetadata);
+      // Show success status
+      showStatus('Sheet loaded successfully! Select header row below.', 'success');
+      // Collapse the instructions card
+      setupInstructionsCard.classList.add('collapsed');
+    }
+  };
+
+  // Continue button handler
+  if (continueBtn) {
+    continueBtn.addEventListener('click', () => {
       const selectedRow = document.querySelector('input[name="header-row"]:checked').value;
+      const metadata = window.appState.sheetMetadata;
+
       window.appState.headerRow = parseInt(selectedRow);
 
       // Update headers based on selection
-      if (selectedRow === '2') {
+      if (selectedRow === '3' && metadata.row3) {
+        window.appState.sheetMetadata.headers = metadata.row3;
+      } else if (selectedRow === '2' && metadata.row2) {
         window.appState.sheetMetadata.headers = metadata.row2;
       } else {
         window.appState.sheetMetadata.headers = metadata.row1;
       }
 
-      transitionToMainScreen();
-    };
+      transitionToMainScreen(metadata);
+    });
   }
 
-  function transitionToMainScreen() {
-    const headerDialog = document.getElementById('header-selection-dialog');
+  function transitionToMainScreen(metadata) {
+    const setupScreen = document.getElementById('setup-screen');
     const mainScreen = document.getElementById('main-screen');
 
-    // Hide header dialog
-    if (headerDialog && !headerDialog.classList.contains('hidden')) {
-      headerDialog.classList.remove('active');
-      headerDialog.classList.add('hidden');
-    }
+    // Hide setup screen
+    setupScreen.classList.remove('active');
+    setupScreen.classList.add('hidden');
 
-    // Show main screen (remove hidden, add active)
+    // Show main screen
     mainScreen.classList.remove('hidden');
     mainScreen.classList.add('active');
 
-    // Populate column dropdowns
-    populateColumnDropdowns();
+    // Populate column dropdowns with FRESH metadata
+    populateColumnDropdowns(metadata);
 
     // Update sheet name display
     document.getElementById('current-sheet-name').textContent = window.appState.sheetUrl;
   }
 
-  function populateColumnDropdowns() {
-    const columnLetters = window.appState.sheetMetadata.columnLetters;
+  function populateColumnDropdowns(metadata) {
+    const columnLetters = metadata.columnLetters;
     const headers = window.appState.sheetMetadata.headers || [];
     const config = window.appState.savedConfig || {};
 
@@ -170,43 +225,62 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     verifySelects.forEach(selectId => {
       const select = document.getElementById(selectId);
-      select.innerHTML = columnLetters.map((letter, index) =>
-        `<option value="${letter}">${formatOption(letter, index)}</option>`
-      ).join('');
+      if (select) {
+        select.innerHTML = columnLetters.map((letter, index) =>
+          `<option value="${letter}">${formatOption(letter, index)}</option>`
+        ).join('');
+      }
     });
 
     // Set defaults from config or use hardcoded defaults
     const verifyConfig = config.desktop?.verify || {};
-    document.getElementById('verify-comment-col').value = verifyConfig.commentCol || 'L';
-    document.getElementById('verify-link-col').value = verifyConfig.linkCol || 'N';
-    document.getElementById('verify-screenshot-col').value = verifyConfig.screenshotCol || 'O';
-    document.getElementById('verify-link-result-col').value = verifyConfig.linkResultCol || 'Q';
-    document.getElementById('verify-screenshot-result-col').value = verifyConfig.screenshotResultCol || 'R';
+    const verifyCommentCol = document.getElementById('verify-comment-col');
+    const verifyLinkCol = document.getElementById('verify-link-col');
+    const verifyScreenshotCol = document.getElementById('verify-screenshot-col');
+    const verifyLinkResultCol = document.getElementById('verify-link-result-col');
+    const verifyScreenshotResultCol = document.getElementById('verify-screenshot-result-col');
+
+    if (verifyCommentCol) verifyCommentCol.value = verifyConfig.commentCol || 'L';
+    if (verifyLinkCol) verifyLinkCol.value = verifyConfig.linkCol || 'N';
+    if (verifyScreenshotCol) verifyScreenshotCol.value = verifyConfig.screenshotCol || 'O';
+    if (verifyLinkResultCol) verifyLinkResultCol.value = verifyConfig.linkResultCol || 'Q';
+    if (verifyScreenshotResultCol) verifyScreenshotResultCol.value = verifyConfig.screenshotResultCol || 'R';
 
     // DupDetection tab dropdowns
-    const dupSelects = ['dup-comment-col', 'dup-cluster-col'];
+    const dupSelects = ['dup-comment-col', 'dup-cluster-col', 'dup-cluster-rows-col'];
 
     dupSelects.forEach(selectId => {
       const select = document.getElementById(selectId);
-      select.innerHTML = columnLetters.map((letter, index) =>
-        `<option value="${letter}">${formatOption(letter, index)}</option>`
-      ).join('');
+      if (select) {
+        select.innerHTML = columnLetters.map((letter, index) =>
+          `<option value="${letter}">${formatOption(letter, index)}</option>`
+        ).join('');
+      }
     });
 
     // Set defaults from config
     const dupConfig = config.desktop?.dupdetector || {};
-    document.getElementById('dup-comment-col').value = dupConfig.commentCol || 'P';
-    document.getElementById('dup-cluster-col').value = dupConfig.clusterCol || 'S';
+    const dupCommentCol = document.getElementById('dup-comment-col');
+    const dupClusterCol = document.getElementById('dup-cluster-col');
+    const dupClusterRowsCol = document.getElementById('dup-cluster-rows-col');
+
+    if (dupCommentCol) dupCommentCol.value = dupConfig.commentCol || 'P';
+    if (dupClusterCol) dupClusterCol.value = dupConfig.clusterCol || 'S';
+    if (dupClusterRowsCol) dupClusterRowsCol.value = dupConfig.clusterRowsCol || 'T';
 
     // Set threshold if available
     const thresholdSlider = document.getElementById('dup-threshold');
     if (thresholdSlider && dupConfig.threshold) {
       thresholdSlider.value = dupConfig.threshold;
-      document.getElementById('dup-threshold-value').textContent = dupConfig.threshold;
+      const thresholdValue = document.getElementById('dup-threshold-value');
+      if (thresholdValue) thresholdValue.textContent = dupConfig.threshold;
     }
 
-    // Add auto-save listeners to all form fields
-    setupAutoSave();
+    // Add auto-save listeners to all form fields (only once)
+    if (!window.autoSaveSetup) {
+      setupAutoSave();
+      window.autoSaveSetup = true;
+    }
   }
 
   function setupAutoSave() {

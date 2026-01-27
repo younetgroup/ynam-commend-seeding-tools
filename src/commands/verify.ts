@@ -242,7 +242,9 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
       columnMapping,
       rowRange,
       concurrency: options.concurrency || savedConfig?.concurrency || 1,
-      port: options.port || savedConfig?.port || 9222
+      port: options.port || savedConfig?.port || 9222,
+      dryRun: options.dryRun || false,
+      headerRow: options.headerRow
     };
   }
 
@@ -688,7 +690,9 @@ export class VerifyCommand extends BaseCommand<VerifyOptions> {
     const records = await this.sheetService.readRecords(
       config.sheetUrl,
       config.columnMapping,
-      config.rowRange
+      config.rowRange,
+      undefined,
+      options.headerRow
     );
 
     logger.info(`Found ${records.length} records to verify`);

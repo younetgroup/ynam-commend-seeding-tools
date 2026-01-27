@@ -3,10 +3,10 @@
  * Entry point for the YouNetAM Spreadsheet Tool desktop application
  */
 
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, shell, dialog } from 'electron';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { setupIpcHandlers } from './ipc-handlers.js';
+import { setupIpcHandlers, cleanupProcesses } from './ipc-handlers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +14,17 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  // Set icon path (works in both dev and prod)
+  let iconPath = '';
+  if (app.isPackaged) {
+    // In production, icons are in resources folder
+    iconPath = path.join(process.resourcesPath, '..', '..', 'docs', 'YNG-logo-STool.png');
+  } else {
+    // In development, use relative path from source
+    iconPath = path.join(__dirname, '../../../docs/YNG-logo-STool.png');
+  }
+  console.log('Icon path:', iconPath);
+
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
@@ -25,21 +36,62 @@ function createWindow() {
       contextIsolation: true,
       sandbox: false
     },
-    icon: path.join(__dirname, '../../docs/younet-logo.png'),
-    title: 'YNAM Sheet Utilities'
+    icon: iconPath,
+    title: 'YNG STool'
   });
 
-  // Load the app
+  // Load the app (from /dist/electron/electron/ go up 3 levels to /dist/renderer/)
   const rendererPath = path.join(__dirname, '../../renderer/index.html');
+  console.log('Loading renderer from:', rendererPath);
+
   mainWindow.loadFile(rendererPath);
+
+  // Error handling for renderer
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Renderer failed to load:', errorCode, errorDescription);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('Render process gone:', details);
+  });
+
+  // Open DevTools if there's an error (for debugging)
+  mainWindow.webContents.on('did-stop-loading', () => {
+    console.log('Renderer loaded successfully');
+  });
 
   // Open DevTools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  let isQuitting = false;
+
+  mainWindow.on('close', (e) => {
+    if (isQuitting) {
+      mainWindow = null;
+      return;
+    }
+
+    e.preventDefault();
+
+    dialog.showMessageBox(mainWindow!, {
+      type: 'question',
+      buttons: ['Cancel', 'Quit'],
+      defaultId: 1,
+      cancelId: 0,
+      title: 'Confirm Exit',
+      message: 'Are you sure you want to quit?',
+      detail: 'All running processes will be terminated completely.'
+    }).then(({ response }) => {
+      if (response === 1) {
+        isQuitting = true;
+        // Kill any child processes here if you were tracking them directly
+        cleanupProcesses();
+        // Forcing aggressive exit:
+        app.quit();
+      }
+    });
   });
 }
 
@@ -195,22 +247,9 @@ function createApplicationMenu() {
       role: 'help',
       submenu: [
         {
-          label: 'Documentation',
-          click: async () => {
-            await shell.openExternal('https://github.com/younet/ynam-comment-tools');
-          }
-        },
-        {
-          label: 'View README',
+          label: 'Help Guide',
           click: () => {
             mainWindow?.webContents.send('show-readme');
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Report Issue',
-          click: async () => {
-            await shell.openExternal('https://github.com/younet/ynam-comment-tools/issues');
           }
         },
         { type: 'separator' },
@@ -229,7 +268,7 @@ function createApplicationMenu() {
 }
 
 // Set app name (shows in dock and menu bar on macOS)
-app.name = 'YNAM Sheet Utilities';
+app.name = 'YNG STool';
 
 // App lifecycle
 app.on('ready', () => {
@@ -238,7 +277,7 @@ app.on('ready', () => {
     // In development: ../../docs relative to dist/electron/electron/
     // In production: icon is set via electron-builder config
     if (!app.isPackaged) {
-      const iconPath = path.join(__dirname, '../../../docs/younet-logo.png');
+      const iconPath = path.join(__dirname, '../../../docs/YNG-logo-STool.png');
       try {
         app.dock.setIcon(iconPath);
       } catch (error) {
